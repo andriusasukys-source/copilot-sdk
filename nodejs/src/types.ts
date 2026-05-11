@@ -21,6 +21,10 @@ export type { SessionFsFileInfo } from "./sessionFsProvider.js";
 export interface CloudRepository {
     owner: string;
     name: string;
+    /**
+     * Optional metadata for callers that want to remember the intended branch.
+     * Mission Control task creation currently uses only owner/name for sandbox provisioning.
+     */
     branch?: string;
 }
 
@@ -151,6 +155,11 @@ export interface CloudSessionOptions {
      * Required when repository is omitted.
      */
     owner?: string;
+    /**
+     * Repository to associate with the sandbox. Mission Control task creation
+     * currently uses only repository owner/name; branch is stored in session
+     * metadata when provided.
+     */
     repository?: CloudRepository;
     missionControlBaseUrl?: string;
     copilotApiBaseUrl?: string;

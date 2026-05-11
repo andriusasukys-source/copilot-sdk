@@ -136,7 +136,7 @@ Create a sandbox-backed cloud session through Mission Control and attach to it a
 const client = new CopilotClient({ gitHubToken: process.env.GITHUB_TOKEN });
 
 const session = await client.createCloudSession({
-    repository: { owner: "github", name: "copilot-sdk", branch: "main" },
+    repository: { owner: "github", name: "copilot-sdk" },
     onProgress: (event) => console.log(event.phase),
 });
 
@@ -149,7 +149,7 @@ await session.send({ prompt: "Summarize the project" });
 
 Cloud sessions are separate from the `remote` client option. `remote: true` exports a local runtime session to Mission Control; `createCloudSession` provisions a cloud sandbox and controls the runtime running there.
 
-Pass `repository` explicitly when the sandbox should be associated with a repository. For repo-less sandboxes, pass `owner` so Mission Control can bill and authorize the sandbox:
+Pass `repository` explicitly when the sandbox should be associated with a repository. Mission Control currently uses only repository owner/name for sandbox provisioning; `repository.branch`, when provided, is retained as SDK metadata only. For repo-less sandboxes, pass `owner` so Mission Control can bill and authorize the sandbox:
 
 ```typescript
 const session = await client.createCloudSession({ owner: "github" });
@@ -157,7 +157,7 @@ const session = await client.createCloudSession({ owner: "github" });
 
 For now, provide `gitHubToken`, `authToken`, or `COPILOT_MC_ACCESS_TOKEN` for Mission Control authentication. `missionControlBaseUrl`, `copilotApiBaseUrl`, `frontendBaseUrl`, and `pollIntervalMs` are available for enterprise hosts and tests.
 
-##### `connectCloudSession(taskOrSessionId: string, options?: CloudConnectOptions): Promise<CloudSession>`
+##### `connectCloudSession(taskId: string, options?: CloudConnectOptions): Promise<CloudSession>`
 
 Attach to an existing Mission Control cloud task and return the same remote-control `CloudSession` facade used by `createCloudSession`.
 

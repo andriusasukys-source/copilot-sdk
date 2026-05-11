@@ -8,6 +8,7 @@ import type {
     MissionControlCommandType,
     MissionControlTask,
 } from "../types.js";
+import { stripTrailingSlash } from "../url.js";
 
 export const CLOUD_SANDBOX_AGENT_SLUG = "copilot-developer-sandbox";
 
@@ -53,10 +54,10 @@ export class MissionControlClient {
     private readonly createCloudTaskTimeoutMs: number;
 
     constructor(options: MissionControlClientOptions) {
-        this.baseUrl = options.baseUrl.replace(/\/+$/, "");
+        this.baseUrl = stripTrailingSlash(options.baseUrl);
         this.authToken = options.authToken?.trim() || undefined;
         this.integrationId = options.integrationId ?? "copilot-cli";
-        this.frontendBaseUrl = options.frontendBaseUrl.replace(/\/+$/, "");
+        this.frontendBaseUrl = stripTrailingSlash(options.frontendBaseUrl);
         this.requestTimeoutMs = options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
         this.createCloudTaskTimeoutMs =
             options.createCloudTaskTimeoutMs ?? DEFAULT_CREATE_CLOUD_TASK_TIMEOUT_MS;
@@ -99,7 +100,7 @@ export class MissionControlClient {
             );
         }
 
-        return data.events.filter(isCloudSessionEvent);
+        return data.events.map((event, index) => parseCloudSessionEvent(event, taskId, index));
     }
 
     async steerTask(
@@ -223,12 +224,81 @@ function isAbortError(error: unknown): boolean {
     return error instanceof Error && (error.name === "AbortError" || error.name === "TimeoutError");
 }
 
-function isCloudSessionEvent(value: unknown): value is CloudSessionEvent {
-    if (!value || typeof value !== "object") return false;
-    const event = value as { id?: unknown; timestamp?: unknown; type?: unknown };
-    return (
-        typeof event.id === "string" &&
-        typeof event.timestamp === "string" &&
-        typeof event.type === "string"
-    );
+function parseCloudSessionEvent(value: unknown, taskId: string, index: number): CloudSessionEvent {
+    const label = `Mission Control event ${index} for task ${taskId}`;
+    if (!isRecord(value)) {
+        throw invalidEventShape(label, "expected an object");
+    }
+
+    if (typeof value.id !== "string") {
+        throw invalidEventShape(label, "expected string id");
+    }
+    if (typeof value.timestamp !== "string") {
+        throw invalidEventShape(label, "expected string timestamp");
+    }
+    if (typeof value.type !== "string") {
+        throw invalidEventShape(label, "expected string type");
+    }
+    if (value.parentId !== null && typeof value.parentId !== "string") {
+        throw invalidEventShape(label, "expected parentId to be a string or null");
+    }
+    if (value.ephemeral !== undefined && typeof value.ephemeral !== "boolean") {
+        throw invalidEventShape(label, "expected ephemeral to be a boolean");
+    }
+    if (value.agentId !== undefined && typeof value.agentId !== "string") {
+        throw invalidEventShape(label, "expected agentId to be a string");
+    }
+
+    validateKnownEventShape(value, label);
+    return value as unknown as CloudSessionEvent;
+}
+
+function validateKnownEventShape(event: Record<string, unknown>, label: string): void {
+    if (event.type === "session.requested") {
+        if (event.data !== undefined && !isRecord(event.data)) {
+            throw invalidEventShape(label, "expected session.requested data to be an object");
+        }
+        return;
+    }
+
+    const data =
+        typeof event.type === "string" && event.type.startsWith("session.")
+            ? requireDataObject(event, label)
+            : event.data;
+
+    if (event.type === "session.remote_steerable_changed") {
+        if (!isRecord(data) || typeof data.remoteSteerable !== "boolean") {
+            throw invalidEventShape(
+                label,
+                "expected session.remote_steerable_changed data.remoteSteerable to be a boolean"
+            );
+        }
+    } else if (event.type === "session.error") {
+        if (!isRecord(data) || typeof data.message !== "string") {
+            throw invalidEventShape(label, "expected session.error data.message to be a string");
+        }
+    } else if (event.type === "assistant.message") {
+        const messageData = requireDataObject(event, label);
+        if (typeof messageData.content !== "string" || typeof messageData.messageId !== "string") {
+            throw invalidEventShape(
+                label,
+                "expected assistant.message data.content and data.messageId to be strings"
+            );
+        }
+    }
+}
+
+function requireDataObject(event: Record<string, unknown>, label: string): Record<string, unknown> {
+    if (!isRecord(event.data)) {
+        throw invalidEventShape(label, `expected ${String(event.type)} data to be an object`);
+    }
+    return event.data;
+}
+
+function invalidEventShape(label: string, detail: string): CloudSessionError {
+    return new CloudSessionError(`Unexpected ${label}: ${detail}`, "server");
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === "object" && value !== null && !Array.isArray(value);
 }

@@ -37,6 +37,7 @@ import { getSdkProtocolVersion } from "./sdkProtocolVersion.js";
 import { CopilotSession, NO_RESULT_PERMISSION_V2_ERROR } from "./session.js";
 import { createSessionFsAdapter } from "./sessionFsProvider.js";
 import { getTraceContext } from "./telemetry.js";
+import { stripTrailingSlash } from "./url.js";
 import type {
     AutoModeSwitchRequest,
     AutoModeSwitchResponse,
@@ -160,10 +161,6 @@ function getNodeExecPath(): string {
         return "node";
     }
     return process.execPath;
-}
-
-function stripTrailingSlash(value: string): string {
-    return value.replace(/\/+$/, "");
 }
 
 function normalizeToken(value: string | undefined): string | undefined {
@@ -1215,10 +1212,10 @@ export class CopilotClient {
      *
      * The identifier is treated as a task ID. If Mission Control can return task
      * metadata, it is used to populate the session metadata; otherwise the SDK
-     * still attaches by polling task events for the provided identifier.
+     * still attaches by polling task events for the provided task ID.
      */
     async connectCloudSession(
-        taskOrSessionId: string,
+        taskId: string,
         options: CloudConnectOptions = {}
     ): Promise<CloudSession> {
         const startedAt = Date.now();
@@ -1226,19 +1223,14 @@ export class CopilotClient {
         options.onProgress?.({
             phase: "waiting_for_session",
             elapsedMs: 0,
-            taskId: taskOrSessionId,
+            taskId,
         });
 
-        const task = await mcClient.getTask(taskOrSessionId);
+        const task = await mcClient.getTask(taskId);
         const owner = normalizeToken(options.owner);
         const metadata = task
             ? this.createCloudSessionMetadata(task, mcClient, options.repository, owner)
-            : this.createFallbackCloudSessionMetadata(
-                  taskOrSessionId,
-                  mcClient,
-                  options.repository,
-                  owner
-              );
+            : this.createFallbackCloudSessionMetadata(taskId, mcClient, options.repository, owner);
 
         const session = new CloudSession({
             client: mcClient,

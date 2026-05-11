@@ -46,6 +46,28 @@ const idleEvent: CloudSessionEvent = {
     data: {},
 };
 
+const assistantMessageEvent: CloudSessionEvent = {
+    id: "event-assistant",
+    parentId: "event-1",
+    timestamp: "2026-05-11T10:00:01.000Z",
+    type: "assistant.message",
+    data: {
+        content: "hello from cloud",
+        messageId: "message-1",
+    },
+};
+
+const sessionErrorEvent: CloudSessionEvent = {
+    id: "event-error",
+    parentId: "event-1",
+    timestamp: "2026-05-11T10:00:01.000Z",
+    type: "session.error",
+    data: {
+        errorType: "query",
+        message: "cloud failed",
+    },
+};
+
 describe("Cloud sessions", () => {
     afterEach(() => {
         vi.useRealTimers();
@@ -63,8 +85,8 @@ describe("Cloud sessions", () => {
             autoStart: false,
             gitHubToken: "token-1",
             env: {
-                COPILOT_MC_BASE_URL: "https://mc.test/agents",
-                COPILOT_MC_FRONTEND_URL: "https://github.test",
+                COPILOT_MC_BASE_URL: "https://mc.test/agents/",
+                COPILOT_MC_FRONTEND_URL: "https://github.test/",
             },
         });
 
@@ -180,6 +202,121 @@ describe("Cloud sessions", () => {
         await session.disconnect();
     });
 
+    it("returns the last assistant message from sendAndWait when the cloud session becomes idle", async () => {
+        vi.useFakeTimers();
+        const fetchMock = mockFetch([
+            textResponse("", { status: 404 }),
+            jsonResponse({ events: [] }),
+            textResponse("", { status: 202 }),
+            jsonResponse({ events: [assistantMessageEvent, idleEvent] }),
+        ]);
+        const client = new CopilotClient({
+            autoStart: false,
+            env: { COPILOT_MC_BASE_URL: "https://mc.test/agents" },
+        });
+
+        const session = await client.connectCloudSession("task-1", {
+            initialEventTimeoutMs: 0,
+            pollIntervalMs: 10,
+        });
+        const result = session.sendAndWait({ prompt: "hello cloud" }, 1_000);
+
+        await flushPromises();
+        expect(fetchMock).toHaveBeenCalledTimes(3);
+        await vi.advanceTimersByTimeAsync(10);
+
+        await expect(result).resolves.toEqual(assistantMessageEvent);
+        await session.disconnect();
+    });
+
+    it("rejects sendAndWait when the cloud session reports an error", async () => {
+        vi.useFakeTimers();
+        mockFetch([
+            textResponse("", { status: 404 }),
+            jsonResponse({ events: [] }),
+            textResponse("", { status: 202 }),
+            jsonResponse({ events: [sessionErrorEvent] }),
+        ]);
+        const client = new CopilotClient({
+            autoStart: false,
+            env: { COPILOT_MC_BASE_URL: "https://mc.test/agents" },
+        });
+
+        const session = await client.connectCloudSession("task-1", {
+            initialEventTimeoutMs: 0,
+            pollIntervalMs: 10,
+        });
+        const result = session.sendAndWait({ prompt: "hello cloud" }, 1_000);
+        const expectedRejection = expect(result).rejects.toThrow("cloud failed");
+
+        await flushPromises();
+        await vi.advanceTimersByTimeAsync(10);
+
+        await expectedRejection;
+        await session.disconnect();
+    });
+
+    it("rejects sendAndWait when the cloud session does not become idle before timeout", async () => {
+        vi.useFakeTimers();
+        const fetchMock = mockFetch([
+            textResponse("", { status: 404 }),
+            jsonResponse({ events: [] }),
+            textResponse("", { status: 202 }),
+        ]);
+        const client = new CopilotClient({
+            autoStart: false,
+            env: { COPILOT_MC_BASE_URL: "https://mc.test/agents" },
+        });
+
+        const session = await client.connectCloudSession("task-1", {
+            initialEventTimeoutMs: 0,
+            pollIntervalMs: 1_000,
+        });
+        const result = session.sendAndWait({ prompt: "hello cloud" }, 25);
+        const expectedRejection = expect(result).rejects.toThrow(
+            "Timeout after 25ms waiting for session.idle"
+        );
+
+        await flushPromises();
+        expect(fetchMock).toHaveBeenCalledTimes(3);
+        await vi.advanceTimersByTimeAsync(25);
+
+        await expectedRejection;
+        await session.disconnect();
+    });
+
+    it("fails fast when Mission Control returns malformed event payloads", async () => {
+        mockFetch([
+            textResponse("", { status: 404 }),
+            jsonResponse({
+                events: [
+                    {
+                        id: "event-bad",
+                        parentId: null,
+                        timestamp: "2026-05-11T10:00:00.000Z",
+                        type: "session.remote_steerable_changed",
+                    },
+                ],
+            }),
+        ]);
+        const client = new CopilotClient({
+            autoStart: false,
+            env: { COPILOT_MC_BASE_URL: "https://mc.test/agents" },
+        });
+
+        await expect(
+            client.connectCloudSession("task-1", {
+                initialEventTimeoutMs: 0,
+            })
+        ).rejects.toMatchObject({
+            name: "CloudSessionError",
+            reason: "server",
+            message: expect.stringContaining(
+                "expected session.remote_steerable_changed data to be an object"
+            ),
+        } satisfies Partial<CloudSessionError>);
+    });
+
     it("sorts replayed events and deduplicates events observed during polling", async () => {
         vi.useFakeTimers();
         const polledEvent: CloudSessionEvent = {
@@ -266,4 +403,9 @@ function textResponse(value: string, init?: ResponseInit): Response {
         status: 200,
         ...init,
     });
+}
+
+async function flushPromises(): Promise<void> {
+    await Promise.resolve();
+    await Promise.resolve();
 }

@@ -126,7 +126,7 @@ export class CloudSession {
                 } else if (event.type === "session.idle") {
                     resolve();
                 } else if (event.type === "session.error") {
-                    reject(new Error(event.data.message));
+                    reject(sessionErrorFromEvent(event));
                 }
             });
         });
@@ -208,6 +208,9 @@ export class CloudSession {
         this.isDisconnected = true;
     }
 
+    /**
+     * @deprecated Use {@link disconnect} instead. This method will be removed in a future release.
+     */
     async destroy(): Promise<void> {
         return this.disconnect();
     }
@@ -297,7 +300,10 @@ export class CloudSession {
 
     private updateRemoteSteerable(event: CloudSessionEvent): void {
         if (event.type === "session.remote_steerable_changed") {
-            this.remoteSteerable = event.data.remoteSteerable;
+            const data: unknown = event.data;
+            if (isRecord(data) && typeof data.remoteSteerable === "boolean") {
+                this.remoteSteerable = data.remoteSteerable;
+            }
         }
     }
 
@@ -345,4 +351,23 @@ export class CloudSession {
 
 function sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function sessionErrorFromEvent(
+    event: Extract<CloudSessionEvent, { type: "session.error" }>
+): Error {
+    const data: unknown = event.data;
+    const message =
+        isRecord(data) && typeof data.message === "string"
+            ? data.message
+            : "Cloud session reported an error";
+    const error = new Error(message);
+    if (isRecord(data) && typeof data.stack === "string") {
+        error.stack = data.stack;
+    }
+    return error;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === "object" && value !== null && !Array.isArray(value);
 }
