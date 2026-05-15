@@ -24,8 +24,8 @@
 - [✅] **Verify CODEOWNERS team** access. See https://github.com/github/copilot-sdk-partners/issues/89
 - [✅] **Check Maven Central Trusted Publisher** — can `github/copilot-sdk` publish to `com.github:copilot-sdk-java`? See
 - [✅] **Check GitHub Pages** — is it enabled? Can Java docs coexist? See https://github.com/github/copilot-sdk-partners/issues/85
-- [ ] **Confirm branch protection** — will new required status checks be accepted?
-- [ ] **Create tracking issue** in `github/copilot-sdk` for this migration
+- [⌛ ] **Confirm branch protection** — will new required status checks be accepted? See https://github.com/github/copilot-sdk-partners/issues/95 .
+- [✅] **Create tracking issue** in `github/copilot-sdk` for this migration. See https://github.com/github/copilot-sdk-partners/issues/80
 - [ ] **Freeze Java SDK changes** — declare a short freeze window in `copilot-sdk-java` to avoid merge conflicts during migration
 
 ### Phase 1: Copy Source Code (No Workflows Yet)
@@ -217,7 +217,7 @@ The Java SDK publish workflow requires secrets that **do not currently exist** i
 - [✅] **CODEOWNERS team**: ~~Ensure `@github/copilot-sdk-java` team has access to `github/copilot-sdk` and is added to CODEOWNERS for `java/**`.~~ See https://github.com/github/copilot-sdk-partners/issues/89 .
 - [⌛] **Maven Central Trusted Publisher**: Currently configured for `github/copilot-sdk-java`. Must be updated to also allow publishing from `github/copilot-sdk` (or create a new namespace mapping). **This is the highest-risk permission issue** — Maven Central's Trusted Publisher setup ties the repository name to the publish flow. See https://github.com/github/copilot-sdk-partners/issues/91
 - [✅] **GitHub Pages**: ~~If `deploy-site.yml` moves, check if GitHub Pages is enabled on the monorepo and whether Java docs can coexist with any existing docs deployment.~~ See https://github.com/github/copilot-sdk-partners/issues/85
-- [ ] **Branch protection**: Ensure `main` branch protection rules in copilot-sdk permit the Java CI workflows (merge queues, required status checks, etc.).
+- [⌛] **Branch protection**: Ensure `main` branch protection rules in copilot-sdk permit the Java CI workflows (merge queues, required status checks, etc.). See https://github.com/github/copilot-sdk-partners/issues/95 .
 - [ ] **Copilot coding agent**: Ensure the agent is enabled for `github/copilot-sdk` and the `copilot-setup-steps.yml` is updated to include Java tooling.
 
 ---
