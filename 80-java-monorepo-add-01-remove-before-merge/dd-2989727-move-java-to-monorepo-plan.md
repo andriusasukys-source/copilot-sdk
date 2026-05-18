@@ -24,7 +24,7 @@
 - [✅] **Verify CODEOWNERS team** access. See https://github.com/github/copilot-sdk-partners/issues/89
 - [✅] **Check Maven Central Trusted Publisher** — can `github/copilot-sdk` publish to `com.github:copilot-sdk-java`? See
 - [✅] **Check GitHub Pages** — is it enabled? Can Java docs coexist? See https://github.com/github/copilot-sdk-partners/issues/85
-- [⌛ ] **Confirm branch protection** — will new required status checks be accepted? See https://github.com/github/copilot-sdk-partners/issues/95 .
+- [✅ ] **Confirm branch protection** — will new required status checks be accepted? See https://github.com/github/copilot-sdk-partners/issues/95 .
 - [✅] **Create tracking issue** in `github/copilot-sdk` for this migration. See https://github.co/github/copilot-sdk-partners/issues/80
 - [✅] **Define drift-management policy** — instead of a hard freeze, adopt a manual forward-port policy:
   1. Reduce `reference-impl-sync` schedule in `copilot-sdk-java` to weekly (Fridays only)
