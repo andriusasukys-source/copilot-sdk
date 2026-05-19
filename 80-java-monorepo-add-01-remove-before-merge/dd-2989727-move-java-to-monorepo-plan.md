@@ -134,6 +134,9 @@
      - `.github/prompts/agentic-merge-reference-impl.prompt.md` — remove cross-repo instructions, add intra-repo paths
      - `.github/prompts/coding-agent-merge-reference-impl-instructions.md` — same
    - **SKILL.md** — update with new paths and simplified flow
+   - Restore the updating of the `readonly-copilot-sdk-ref-impl-version-from-lastmerge-file-updated-by-reference-impl-sync` POM property:
+     pin to. It is updated automatically by
+     .github/scripts/reference-impl-sync/sync-cli-version-from-reference-impl.sh
 
 3. **`sdk-consistency-review`** — Update:
    - Add `java/**` to path triggers in the `.md` frontmatter
