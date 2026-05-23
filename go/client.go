@@ -87,6 +87,27 @@ func validateSessionFsConfig(config *SessionFsConfig) error {
 //	    log.Fatal(err)
 //	}
 //	defer client.Stop()
+//
+// pendingResult carries the outcome of a parked inbound-request session lookup.
+type pendingResult struct {
+	session *Session
+	err     error
+}
+
+// pendingRouting buffers session.event notifications and parks inbound request
+// handlers that arrive before a cloud session.create response is received.
+// A refcount tracks how many cloud creates are in flight; when it reaches zero
+// the buffers are cleared and parked handlers are rejected.
+type pendingRouting struct {
+	mu      sync.Mutex
+	count   int
+	events  map[string][]sessionEventRequest
+	waiters map[string][]chan pendingResult
+}
+
+// pendingSessionBufferLimit caps buffered notifications per in-flight session id.
+const pendingSessionBufferLimit = 128
+
 type Client struct {
 	options          ClientOptions
 	process          *exec.Cmd
@@ -120,6 +141,10 @@ type Client struct {
 	// the SDK spawns its own CLI in TCP mode.
 	effectiveConnectionToken string
 	onListModels             func(ctx context.Context) ([]ModelInfo, error)
+
+	// pending buffers traffic that arrives between session.create being sent and
+	// the response for cloud sessions.
+	pending pendingRouting
 
 	// RPC provides typed server-scoped RPC methods.
 	// This field is nil until the client is connected via Start().
@@ -162,6 +187,10 @@ func NewClient(options *ClientOptions) *Client {
 		actualHost:       "localhost",
 		isExternalServer: false,
 		useStdio:         true,
+		pending: pendingRouting{
+			events:  make(map[string][]sessionEventRequest),
+			waiters: make(map[string][]chan pendingResult),
+		},
 	}
 
 	if options != nil {
@@ -593,6 +622,10 @@ func (c *Client) CreateSession(ctx context.Context, config *SessionConfig) (*Ses
 		config = &SessionConfig{}
 	}
 
+	if config.Cloud != nil {
+		return nil, fmt.Errorf("CreateSession does not support cloud sessions; use CreateCloudSession instead")
+	}
+
 	if err := c.ensureConnected(ctx); err != nil {
 		return nil, err
 	}
@@ -752,6 +785,307 @@ func (c *Client) CreateSession(ctx context.Context, config *SessionConfig) (*Ses
 	session.setCapabilities(response.Capabilities)
 
 	return session, nil
+}
+
+// CreateCloudSession creates a Mission Control–backed cloud session.
+//
+// The runtime owns the session ID for cloud sessions: do not set SessionID or
+// Provider on the config (the SDK rejects both). Build the config with Cloud
+// set to a [CloudSessionOptions] value; [Client.CreateSession] rejects any
+// config that has Cloud set.
+//
+// Any session.event notifications or inbound JSON-RPC requests that arrive
+// between sending session.create and receiving its response are buffered
+// (bounded, drop-oldest, limit 128 per id) and replayed once the
+// runtime-assigned session ID is registered.
+//
+// Known limitation: inbound sessionFs.* requests from the generated
+// client-session API handlers are not pending-buffered. In practice the
+// runtime does not initiate sessionFs.* calls before the session.create
+// response, so this is theoretical.
+//
+// Example:
+//
+//	session, err := client.CreateCloudSession(context.Background(), &copilot.SessionConfig{
+//	    OnPermissionRequest: copilot.PermissionHandler.ApproveAll,
+//	    Cloud: &copilot.CloudSessionOptions{
+//	        Repository: &copilot.CloudSessionRepository{
+//	            Owner: "github", Name: "copilot-sdk",
+//	        },
+//	    },
+//	})
+func (c *Client) CreateCloudSession(ctx context.Context, config *SessionConfig) (*Session, error) {
+	if config == nil {
+		config = &SessionConfig{}
+	}
+
+	if config.Cloud == nil {
+		return nil, fmt.Errorf("CreateCloudSession requires config.Cloud to be set")
+	}
+	if config.SessionID != "" {
+		return nil, fmt.Errorf("CreateCloudSession does not accept a caller-provided SessionID; the runtime assigns one")
+	}
+	if config.Provider != nil {
+		return nil, fmt.Errorf("CreateCloudSession does not accept config.Provider; cloud sessions use the runtime's provider")
+	}
+
+	if err := c.ensureConnected(ctx); err != nil {
+		return nil, err
+	}
+
+	req := createSessionRequest{}
+	req.Model = config.Model
+	req.ClientName = config.ClientName
+	req.ReasoningEffort = config.ReasoningEffort
+	req.ConfigDir = config.ConfigDir
+	if config.EnableConfigDiscovery {
+		req.EnableConfigDiscovery = Bool(true)
+	}
+	req.Tools = config.Tools
+	wireSystemMessage, transformCallbacks := extractTransformCallbacks(config.SystemMessage)
+	req.SystemMessage = wireSystemMessage
+	req.AvailableTools = config.AvailableTools
+	req.ExcludedTools = config.ExcludedTools
+	req.EnableSessionTelemetry = config.EnableSessionTelemetry
+	req.ModelCapabilities = config.ModelCapabilities
+	req.WorkingDirectory = config.WorkingDirectory
+	req.MCPServers = config.MCPServers
+	req.EnvValueMode = "direct"
+	req.CustomAgents = config.CustomAgents
+	req.DefaultAgent = config.DefaultAgent
+	req.Agent = config.Agent
+	req.SkillDirectories = config.SkillDirectories
+	req.InstructionDirectories = config.InstructionDirectories
+	req.DisabledSkills = config.DisabledSkills
+	req.InfiniteSessions = config.InfiniteSessions
+	req.GitHubToken = config.GitHubToken
+	req.RemoteSession = config.RemoteSession
+	req.Cloud = config.Cloud
+	// SessionID intentionally omitted: the runtime assigns the id for cloud sessions.
+
+	if len(config.Commands) > 0 {
+		cmds := make([]wireCommand, 0, len(config.Commands))
+		for _, cmd := range config.Commands {
+			cmds = append(cmds, wireCommand{Name: cmd.Name, Description: cmd.Description})
+		}
+		req.Commands = cmds
+	}
+	if config.OnElicitationRequest != nil {
+		req.RequestElicitation = Bool(true)
+	}
+	if config.OnExitPlanModeRequest != nil {
+		req.RequestExitPlanMode = Bool(true)
+	}
+	if config.OnAutoModeSwitchRequest != nil {
+		req.RequestAutoModeSwitch = Bool(true)
+	}
+	if config.Streaming != nil {
+		req.Streaming = config.Streaming
+	}
+	if config.IncludeSubAgentStreamingEvents != nil {
+		req.IncludeSubAgentStreamingEvents = config.IncludeSubAgentStreamingEvents
+	} else {
+		req.IncludeSubAgentStreamingEvents = Bool(true)
+	}
+	if config.OnUserInputRequest != nil {
+		req.RequestUserInput = Bool(true)
+	}
+	if config.Hooks != nil && (config.Hooks.OnPreToolUse != nil ||
+		config.Hooks.OnPreMcpToolCall != nil ||
+		config.Hooks.OnPostToolUse != nil ||
+		config.Hooks.OnUserPromptSubmitted != nil ||
+		config.Hooks.OnSessionStart != nil ||
+		config.Hooks.OnSessionEnd != nil ||
+		config.Hooks.OnErrorOccurred != nil) {
+		req.Hooks = Bool(true)
+	}
+	if config.OnPermissionRequest != nil {
+		req.RequestPermission = Bool(true)
+	}
+
+	traceparent, tracestate := getTraceContext(ctx)
+	req.Traceparent = traceparent
+	req.Tracestate = tracestate
+
+	dispose := c.beginPendingSessionRouting()
+
+	result, err := c.client.Request("session.create", req)
+	if err != nil {
+		dispose()
+		return nil, fmt.Errorf("failed to create cloud session: %w", err)
+	}
+
+	var response createSessionResponse
+	if err := json.Unmarshal(result, &response); err != nil {
+		dispose()
+		return nil, fmt.Errorf("failed to unmarshal cloud session response: %w", err)
+	}
+
+	if response.SessionID == "" {
+		fmt.Println("warning: cloud session.create response missing sessionId; runtime session may leak")
+		dispose()
+		return nil, fmt.Errorf("cloud session.create response did not include a sessionId; cannot register session")
+	}
+
+	sessionID := response.SessionID
+	session := newSession(sessionID, c.client, response.WorkspacePath)
+
+	session.registerTools(config.Tools)
+	session.registerPermissionHandler(config.OnPermissionRequest)
+	if config.OnUserInputRequest != nil {
+		session.registerUserInputHandler(config.OnUserInputRequest)
+	}
+	if config.Hooks != nil {
+		session.registerHooks(config.Hooks)
+	}
+	if transformCallbacks != nil {
+		session.registerTransformCallbacks(transformCallbacks)
+	}
+	if config.OnEvent != nil {
+		session.On(config.OnEvent)
+	}
+	if len(config.Commands) > 0 {
+		session.registerCommands(config.Commands)
+	}
+	if config.OnElicitationRequest != nil {
+		session.registerElicitationHandler(config.OnElicitationRequest)
+	}
+	if config.OnExitPlanModeRequest != nil {
+		session.registerExitPlanModeHandler(config.OnExitPlanModeRequest)
+	}
+	if config.OnAutoModeSwitchRequest != nil {
+		session.registerAutoModeSwitchHandler(config.OnAutoModeSwitchRequest)
+	}
+	session.setCapabilities(response.Capabilities)
+
+	c.sessionsMux.Lock()
+	c.sessions[sessionID] = session
+	c.sessionsMux.Unlock()
+
+	if c.options.SessionFs != nil {
+		if config.CreateSessionFsProvider == nil {
+			c.sessionsMux.Lock()
+			delete(c.sessions, sessionID)
+			c.sessionsMux.Unlock()
+			dispose()
+			return nil, fmt.Errorf("CreateSessionFsProvider is required in session config when SessionFs is enabled in client options")
+		}
+		provider := config.CreateSessionFsProvider(session)
+		if c.options.SessionFs.Capabilities != nil && c.options.SessionFs.Capabilities.Sqlite {
+			if _, ok := provider.(SessionFsSqliteProvider); !ok {
+				c.sessionsMux.Lock()
+				delete(c.sessions, sessionID)
+				c.sessionsMux.Unlock()
+				dispose()
+				return nil, fmt.Errorf("SessionFs capabilities declare SQLite support but the provider does not implement SessionFsSqliteProvider")
+			}
+		}
+		session.clientSessionApis.SessionFs = newSessionFsAdapter(provider)
+	}
+
+	// Drain buffered events and unblock parked request handlers before
+	// releasing the guard, so they see a fully-wired session.
+	c.flushPendingForSession(sessionID, session)
+	dispose()
+
+	return session, nil
+}
+
+// beginPendingSessionRouting increments the pending-routing refcount and
+// returns a disposer. While any disposer is undisposed, session.event
+// notifications and inbound JSON-RPC requests addressed to unknown session ids
+// are buffered/parked rather than dropped. When the last disposer fires, any
+// remaining buffers are cleared and parked handlers receive an error so they
+// don't block forever.
+func (c *Client) beginPendingSessionRouting() func() {
+	c.pending.mu.Lock()
+	c.pending.count++
+	c.pending.mu.Unlock()
+
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			c.pending.mu.Lock()
+			c.pending.count--
+			if c.pending.count > 0 {
+				c.pending.mu.Unlock()
+				return
+			}
+			// Last guard: swap out the maps so we can signal waiters without
+			// holding the lock (buffered channels make sends non-blocking, but
+			// releasing the lock is cleaner).
+			c.pending.events = make(map[string][]sessionEventRequest)
+			waiters := c.pending.waiters
+			c.pending.waiters = make(map[string][]chan pendingResult)
+			c.pending.mu.Unlock()
+
+			for _, chs := range waiters {
+				for _, ch := range chs {
+					ch <- pendingResult{err: fmt.Errorf("request dropped: cloud session.create completed without registering this session id")}
+				}
+			}
+		})
+	}
+}
+
+// flushPendingForSession drains buffered events and resolves parked request
+// handlers for sessionID into the freshly-registered session. Called from
+// CreateCloudSession after the session is in c.sessions and before the pending
+// guard is released.
+func (c *Client) flushPendingForSession(sessionID string, session *Session) {
+	c.pending.mu.Lock()
+	events := c.pending.events[sessionID]
+	delete(c.pending.events, sessionID)
+	waiters := c.pending.waiters[sessionID]
+	delete(c.pending.waiters, sessionID)
+	c.pending.mu.Unlock()
+
+	for _, req := range events {
+		session.dispatchEvent(req.Event)
+	}
+	for _, ch := range waiters {
+		ch <- pendingResult{session: session}
+	}
+}
+
+// waitForSession looks up the session by id. If the session is not yet
+// registered but pending routing is active, the call parks until the session
+// is registered (or pending routing ends without registration).
+func (c *Client) waitForSession(sessionID string) (*Session, error) {
+	c.sessionsMux.Lock()
+	session, ok := c.sessions[sessionID]
+	c.sessionsMux.Unlock()
+	if ok {
+		return session, nil
+	}
+
+	c.pending.mu.Lock()
+	if c.pending.count == 0 {
+		c.pending.mu.Unlock()
+		return nil, fmt.Errorf("unknown session %s", sessionID)
+	}
+	// Re-check under pending.mu: the session may have been registered and
+	// flushed between the first lookup and acquiring this lock.
+	c.sessionsMux.Lock()
+	session, ok = c.sessions[sessionID]
+	c.sessionsMux.Unlock()
+	if ok {
+		c.pending.mu.Unlock()
+		return session, nil
+	}
+	ch := make(chan pendingResult, 1)
+	waiters := c.pending.waiters[sessionID]
+	if len(waiters) >= pendingSessionBufferLimit {
+		// Reject the oldest waiter to keep the queue bounded.
+		oldest := waiters[0]
+		waiters = waiters[1:]
+		oldest <- pendingResult{err: fmt.Errorf("request dropped: pending session waiter buffer full for %s", sessionID)}
+	}
+	c.pending.waiters[sessionID] = append(waiters, ch)
+	c.pending.mu.Unlock()
+
+	result := <-ch
+	return result.session, result.err
 }
 
 // ResumeSession resumes an existing conversation session by its ID.
@@ -1761,14 +2095,35 @@ func (c *Client) handleSessionEvent(req sessionEventRequest) {
 	if req.SessionID == "" {
 		return
 	}
-	// Dispatch to session
 	c.sessionsMux.Lock()
 	session, ok := c.sessions[req.SessionID]
 	c.sessionsMux.Unlock()
 
 	if ok {
 		session.dispatchEvent(req.Event)
+		return
 	}
+
+	// Buffer if a cloud session.create is in flight for this id.
+	c.pending.mu.Lock()
+	if c.pending.count > 0 {
+		// Re-check under pending.mu: the session may have been registered and
+		// flushed between the first lookup and acquiring this lock.
+		c.sessionsMux.Lock()
+		session, ok = c.sessions[req.SessionID]
+		c.sessionsMux.Unlock()
+		if ok {
+			c.pending.mu.Unlock()
+			session.dispatchEvent(req.Event)
+			return
+		}
+		buf := c.pending.events[req.SessionID]
+		if len(buf) >= pendingSessionBufferLimit {
+			buf = buf[1:] // drop oldest
+		}
+		c.pending.events[req.SessionID] = append(buf, req)
+	}
+	c.pending.mu.Unlock()
 }
 
 // handleUserInputRequest handles a user input request from the CLI server.
@@ -1777,11 +2132,9 @@ func (c *Client) handleUserInputRequest(req userInputRequest) (*userInputRespons
 		return nil, &jsonrpc2.Error{Code: -32602, Message: "invalid user input request payload"}
 	}
 
-	c.sessionsMux.Lock()
-	session, ok := c.sessions[req.SessionID]
-	c.sessionsMux.Unlock()
-	if !ok {
-		return nil, &jsonrpc2.Error{Code: -32602, Message: fmt.Sprintf("unknown session %s", req.SessionID)}
+	session, err := c.waitForSession(req.SessionID)
+	if err != nil {
+		return nil, &jsonrpc2.Error{Code: -32602, Message: err.Error()}
 	}
 
 	response, err := session.handleUserInputRequest(UserInputRequest{
@@ -1806,11 +2159,9 @@ func (c *Client) handleExitPlanModeRequest(req exitPlanModeRequest) (*ExitPlanMo
 		recommendedAction = "autopilot"
 	}
 
-	c.sessionsMux.Lock()
-	session, ok := c.sessions[req.SessionID]
-	c.sessionsMux.Unlock()
-	if !ok {
-		return nil, &jsonrpc2.Error{Code: -32602, Message: fmt.Sprintf("unknown session %s", req.SessionID)}
+	session, err := c.waitForSession(req.SessionID)
+	if err != nil {
+		return nil, &jsonrpc2.Error{Code: -32602, Message: err.Error()}
 	}
 
 	response, err := session.handleExitPlanModeRequest(ExitPlanModeRequest{
@@ -1832,11 +2183,9 @@ func (c *Client) handleAutoModeSwitchRequest(req autoModeSwitchRequest) (*autoMo
 		return nil, &jsonrpc2.Error{Code: -32602, Message: "invalid auto mode switch request payload"}
 	}
 
-	c.sessionsMux.Lock()
-	session, ok := c.sessions[req.SessionID]
-	c.sessionsMux.Unlock()
-	if !ok {
-		return nil, &jsonrpc2.Error{Code: -32602, Message: fmt.Sprintf("unknown session %s", req.SessionID)}
+	session, err := c.waitForSession(req.SessionID)
+	if err != nil {
+		return nil, &jsonrpc2.Error{Code: -32602, Message: err.Error()}
 	}
 
 	response, err := session.handleAutoModeSwitchRequest(AutoModeSwitchRequest{
@@ -1856,11 +2205,9 @@ func (c *Client) handleHooksInvoke(req hooksInvokeRequest) (map[string]any, *jso
 		return nil, &jsonrpc2.Error{Code: -32602, Message: "invalid hooks invoke payload"}
 	}
 
-	c.sessionsMux.Lock()
-	session, ok := c.sessions[req.SessionID]
-	c.sessionsMux.Unlock()
-	if !ok {
-		return nil, &jsonrpc2.Error{Code: -32602, Message: fmt.Sprintf("unknown session %s", req.SessionID)}
+	session, err := c.waitForSession(req.SessionID)
+	if err != nil {
+		return nil, &jsonrpc2.Error{Code: -32602, Message: err.Error()}
 	}
 
 	output, err := session.handleHooksInvoke(req.Type, req.Input)
@@ -1881,11 +2228,9 @@ func (c *Client) handleSystemMessageTransform(req systemMessageTransformRequest)
 		return systemMessageTransformResponse{}, &jsonrpc2.Error{Code: -32602, Message: "invalid system message transform payload"}
 	}
 
-	c.sessionsMux.Lock()
-	session, ok := c.sessions[req.SessionID]
-	c.sessionsMux.Unlock()
-	if !ok {
-		return systemMessageTransformResponse{}, &jsonrpc2.Error{Code: -32602, Message: fmt.Sprintf("unknown session %s", req.SessionID)}
+	session, err := c.waitForSession(req.SessionID)
+	if err != nil {
+		return systemMessageTransformResponse{}, &jsonrpc2.Error{Code: -32602, Message: err.Error()}
 	}
 
 	resp, err := session.handleSystemMessageTransform(req.Sections)
