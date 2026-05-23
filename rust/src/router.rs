@@ -5,7 +5,9 @@ use parking_lot::Mutex;
 use tokio::sync::{broadcast, mpsc};
 use tracing::warn;
 
-use crate::jsonrpc::{JsonRpcNotification, JsonRpcRequest};
+use crate::jsonrpc::{
+    JsonRpcError, JsonRpcNotification, JsonRpcRequest, JsonRpcResponse, WriterHandle, error_codes,
+};
 use crate::types::{SessionEventNotification, SessionId};
 
 /// Upper bound on buffered notifications/requests per pending session id.
@@ -44,6 +46,11 @@ struct SessionRouterState {
     sessions: HashMap<SessionId, SessionSenders>,
     pending: HashMap<SessionId, PendingSessionMessages>,
     pending_registration_count: usize,
+    /// Outbound writer used to synthesize JSON-RPC error responses when
+    /// the pending buffer overflows. `None` in tests that exercise the
+    /// router in isolation; production construction goes through
+    /// [`SessionRouter::new`] which threads a real handle in.
+    writer: Option<WriterHandle>,
 }
 
 impl SessionRouterState {
@@ -77,6 +84,7 @@ impl SessionRouterState {
             self.pending.entry(session_id.clone()).or_default(),
             &session_id,
             PendingItem::Notification(notification),
+            self.writer.as_ref(),
         );
     }
 
@@ -108,6 +116,7 @@ impl SessionRouterState {
             self.pending.entry(session_id.clone()).or_default(),
             &session_id,
             PendingItem::Request(request),
+            self.writer.as_ref(),
         );
     }
 }
@@ -118,16 +127,60 @@ impl SessionRouterState {
 /// order, which matters because some session.event notifications must be
 /// observed by the consumer before later inbound requests (e.g. an
 /// "approval requested" event arriving before the matching tool call).
-fn push_pending(buf: &mut PendingSessionMessages, session_id: &SessionId, item: PendingItem) {
+///
+/// When the evicted entry is a request, we synthesize a JSON-RPC error
+/// response back to the runtime so it doesn't block waiting for a reply
+/// that will never arrive. Notifications are fire-and-forget, so dropping
+/// one only emits a warning.
+fn push_pending(
+    buf: &mut PendingSessionMessages,
+    session_id: &SessionId,
+    item: PendingItem,
+    writer: Option<&WriterHandle>,
+) {
     if buf.items.len() >= PENDING_SESSION_BUFFER_LIMIT {
-        buf.items.pop_front();
-        warn!(
-            session_id = %session_id,
-            limit = PENDING_SESSION_BUFFER_LIMIT,
-            "pending session buffer full; dropping oldest entry"
-        );
+        match buf.items.pop_front() {
+            Some(PendingItem::Request(dropped)) => {
+                warn!(
+                    session_id = %session_id,
+                    method = %dropped.method,
+                    request_id = dropped.id,
+                    limit = PENDING_SESSION_BUFFER_LIMIT,
+                    "pending session buffer full; dropping oldest request and responding with error"
+                );
+                if let Some(writer) = writer {
+                    writer.send_fire_and_forget(&pending_overflow_response(dropped.id));
+                }
+            }
+            Some(PendingItem::Notification(_)) => {
+                warn!(
+                    session_id = %session_id,
+                    limit = PENDING_SESSION_BUFFER_LIMIT,
+                    "pending session buffer full; dropping oldest notification"
+                );
+            }
+            None => {}
+        }
     }
     buf.items.push_back(item);
+}
+
+/// Build a JSON-RPC error response for a request the SDK had to discard
+/// because the pending-session buffer overflowed before the runtime
+/// returned `session.create`.
+fn pending_overflow_response(id: u64) -> JsonRpcResponse {
+    JsonRpcResponse {
+        jsonrpc: "2.0".to_string(),
+        id,
+        result: None,
+        error: Some(JsonRpcError {
+            code: error_codes::INTERNAL_ERROR,
+            message: "request dropped: pending session buffer overflow before session.create \
+                      response"
+                .to_string(),
+            data: None,
+        }),
+    }
 }
 
 /// Guard that keeps the router in "pending routing" mode for cloud
@@ -159,9 +212,25 @@ pub(crate) struct SessionRouter {
 }
 
 impl SessionRouter {
+    /// Test-only constructor. Production callers must use
+    /// [`SessionRouter::with_writer`] so dropped requests get error
+    /// responses. Tests that don't exercise the writer can use this.
+    #[cfg(test)]
     pub(crate) fn new() -> Self {
         Self {
             state: Arc::new(Mutex::new(SessionRouterState::default())),
+        }
+    }
+
+    /// Construct a router with a handle onto the JSON-RPC outbound writer,
+    /// used to synthesize error responses when pending-buffer overflow
+    /// forces us to discard an inbound request.
+    pub(crate) fn with_writer(writer: WriterHandle) -> Self {
+        Self {
+            state: Arc::new(Mutex::new(SessionRouterState {
+                writer: Some(writer),
+                ..SessionRouterState::default()
+            })),
         }
     }
 
@@ -400,6 +469,68 @@ mod tests {
         assert_eq!(r.id, 1);
         let n1 = channels.notifications.try_recv().expect("trailing notif");
         assert_eq!(n1.event.event_type, "evt-1");
+    }
+
+    #[tokio::test]
+    async fn pending_request_overflow_emits_jsonrpc_error_response() {
+        use crate::jsonrpc::{JsonRpcClient, error_codes};
+        use tokio::io::AsyncReadExt;
+        use tokio::sync::{broadcast, mpsc};
+
+        // Stand up a real JsonRpcClient over a duplex pair so we can read
+        // back the bytes the WriterHandle pushes onto the wire.
+        let (server_read, client_write) = tokio::io::duplex(64 * 1024);
+        let (_client_read, _server_write) = tokio::io::duplex(64);
+        let (notif_tx, _) = broadcast::channel(16);
+        let (req_tx, _req_rx) = mpsc::unbounded_channel();
+        let rpc = JsonRpcClient::new(client_write, _client_read, notif_tx, req_tx);
+        let router = SessionRouter::with_writer(rpc.writer_handle());
+        let _guard = router.begin_pending_session_routing();
+
+        // First buffered request is the one we expect to evict.
+        let evicted_id = 7777;
+        router
+            .state
+            .lock()
+            .route_request(make_request(evicted_id, "remote", "userInput.request"));
+        for i in 0..PENDING_SESSION_BUFFER_LIMIT {
+            router
+                .state
+                .lock()
+                .route_request(make_request(i as u64, "remote", "userInput.request"));
+        }
+
+        // Drain the wire and find an error response with the evicted id.
+        let mut buf = Vec::with_capacity(4096);
+        let mut reader = server_read;
+        tokio::time::timeout(std::time::Duration::from_secs(1), async {
+            while !buf
+                .windows(2)
+                .any(|w| w == b"\r\n" && buf.windows(4).any(|w4| w4 == b"\r\n\r\n"))
+            {
+                let mut chunk = [0u8; 256];
+                let n = reader.read(&mut chunk).await.expect("read frame");
+                if n == 0 {
+                    break;
+                }
+                buf.extend_from_slice(&chunk[..n]);
+            }
+        })
+        .await
+        .expect("frame within timeout");
+
+        let body_start = buf
+            .windows(4)
+            .position(|w| w == b"\r\n\r\n")
+            .expect("header terminator")
+            + 4;
+        let body = std::str::from_utf8(&buf[body_start..]).expect("utf-8 body");
+        let response: JsonRpcResponse =
+            serde_json::from_str(body.trim_end()).expect("parse response");
+        assert_eq!(response.id, evicted_id);
+        let err = response.error.expect("error payload");
+        assert_eq!(err.code, error_codes::INTERNAL_ERROR);
+        assert!(err.message.contains("pending session buffer overflow"));
     }
 
     #[test]

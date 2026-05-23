@@ -1201,6 +1201,8 @@ impl Client {
         let pid = child.as_ref().and_then(|c| c.id());
         info!(pid = ?pid, "copilot CLI client ready");
 
+        let client_rpc_writer_handle = rpc.writer_handle();
+
         let client = Self {
             inner: Arc::new(ClientInner {
                 child: parking_lot::Mutex::new(child),
@@ -1208,7 +1210,7 @@ impl Client {
                 cwd,
                 request_rx: parking_lot::Mutex::new(Some(request_rx)),
                 notification_tx: notification_broadcast_tx,
-                router: router::SessionRouter::new(),
+                router: router::SessionRouter::with_writer(client_rpc_writer_handle),
                 negotiated_protocol_version: OnceLock::new(),
                 state: parking_lot::Mutex::new(ConnectionState::Connected),
                 lifecycle_tx: broadcast::channel(256).0,
