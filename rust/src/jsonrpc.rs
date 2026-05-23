@@ -512,6 +512,14 @@ pub(crate) struct WriterHandle {
     write_tx: mpsc::UnboundedSender<WriteCommand>,
 }
 
+impl Clone for WriterHandle {
+    fn clone(&self) -> Self {
+        Self {
+            write_tx: self.write_tx.clone(),
+        }
+    }
+}
+
 impl WriterHandle {
     /// Serialize and enqueue a JSON-RPC message without waiting for the
     /// writer actor to flush it. Drops silently if serialization fails or

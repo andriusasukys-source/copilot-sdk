@@ -123,10 +123,17 @@ impl SessionRouterState {
 
 /// Push an item into a session's pending buffer, evicting the oldest entry
 /// (regardless of type) when the per-session limit is reached. A single
-/// FIFO across notifications and requests preserves cross-type arrival
-/// order, which matters because some session.event notifications must be
-/// observed by the consumer before later inbound requests (e.g. an
-/// "approval requested" event arriving before the matching tool call).
+/// FIFO across notifications and requests keeps the eviction policy fair
+/// across both types and avoids the previous behavior where flushing
+/// drained all buffered notifications before any buffered request,
+/// artificially batching one type ahead of the other.
+///
+/// Note: this does not give the consumer a strict cross-type total order.
+/// After `register`, notifications and requests still arrive on two
+/// separate per-session mpsc channels and are consumed via `select!`, so
+/// the observed order across types is implementation-defined. Strict
+/// ordering would require unifying the per-session channels — tracked
+/// for a follow-up.
 ///
 /// When the evicted entry is a request, we synthesize a JSON-RPC error
 /// response back to the runtime so it doesn't block waiting for a reply
@@ -183,13 +190,35 @@ fn pending_overflow_response(id: u64) -> JsonRpcResponse {
     }
 }
 
+/// Build a JSON-RPC error response for a request the SDK buffered while
+/// awaiting `session.create` but had to discard because the pending
+/// routing guard dropped without a matching `register` (e.g. cloud
+/// session creation failed end-to-end).
+fn pending_unregistered_response(id: u64) -> JsonRpcResponse {
+    JsonRpcResponse {
+        jsonrpc: "2.0".to_string(),
+        id,
+        result: None,
+        error: Some(JsonRpcError {
+            code: error_codes::INTERNAL_ERROR,
+            message: "request dropped: pending session routing ended before session was registered"
+                .to_string(),
+            data: None,
+        }),
+    }
+}
+
 /// Guard that keeps the router in "pending routing" mode for cloud
 /// `session.create`: while any guard is alive, notifications/requests with
 /// unknown session ids are buffered (up to [`PENDING_SESSION_BUFFER_LIMIT`])
 /// instead of dropped. On `register`, buffered messages flush in arrival
 /// order into the freshly-created per-session channels.
 ///
-/// When the last guard drops, any still-pending buffers are cleared.
+/// When the last guard drops without a matching `register` (e.g. cloud
+/// `session.create` failed), any still-pending buffers are drained and
+/// each pending request gets a JSON-RPC error response so the runtime
+/// isn't left waiting on a reply that will never come. Notifications are
+/// fire-and-forget and just get logged.
 pub(crate) struct PendingSessionRouting {
     state: Arc<Mutex<SessionRouterState>>,
 }
@@ -198,8 +227,36 @@ impl Drop for PendingSessionRouting {
     fn drop(&mut self) {
         let mut state = self.state.lock();
         state.pending_registration_count = state.pending_registration_count.saturating_sub(1);
-        if state.pending_registration_count == 0 {
-            state.pending.clear();
+        if state.pending_registration_count != 0 {
+            return;
+        }
+        let pending = std::mem::take(&mut state.pending);
+        let writer = state.writer.clone();
+        drop(state);
+        for (session_id, buf) in pending {
+            for item in buf.items {
+                match item {
+                    PendingItem::Request(req) => {
+                        warn!(
+                            session_id = %session_id,
+                            method = %req.method,
+                            request_id = req.id,
+                            "pending session routing ended without registration; \
+                             responding to buffered request with error"
+                        );
+                        if let Some(writer) = writer.as_ref() {
+                            writer.send_fire_and_forget(&pending_unregistered_response(req.id));
+                        }
+                    }
+                    PendingItem::Notification(_) => {
+                        warn!(
+                            session_id = %session_id,
+                            "pending session routing ended without registration; \
+                             dropping buffered notification"
+                        );
+                    }
+                }
+            }
         }
     }
 }
@@ -444,10 +501,14 @@ mod tests {
     }
 
     #[test]
-    fn pending_buffer_preserves_cross_type_arrival_order() {
-        // Interleave a request between notifications and make sure the
-        // request lands in its arrival slot relative to surrounding events
-        // on the consumer side, not batched after every notification.
+    fn pending_buffer_flush_interleaves_types_in_arrival_order() {
+        // The pending FIFO accepts notifications and requests interleaved,
+        // and `register` drains them in arrival order to their respective
+        // per-session channels. This test asserts the FIFO order is
+        // preserved through the flush, not that the downstream consumer
+        // observes a strict cross-type total order — after register the
+        // two channels are consumed via `select!`, so observed cross-type
+        // order is implementation-defined.
         let router = SessionRouter::new();
         let guard = router.begin_pending_session_routing();
 
@@ -462,31 +523,74 @@ mod tests {
         let mut channels = router.register(&sid);
         drop(guard);
 
-        // First notification flushes first, then the request lands in the
-        // request channel before the trailing notification is delivered.
+        // Notifications drain in arrival order to the notif channel.
         let n0 = channels.notifications.try_recv().expect("first notif");
         assert_eq!(n0.event.event_type, "evt-0");
-        let r = channels.requests.try_recv().expect("request");
-        assert_eq!(r.id, 1);
         let n1 = channels.notifications.try_recv().expect("trailing notif");
         assert_eq!(n1.event.event_type, "evt-1");
+        // The buffered request drains to the request channel.
+        let r = channels.requests.try_recv().expect("request");
+        assert_eq!(r.id, 1);
+    }
+
+    /// Read one Content-Length-framed JSON-RPC response off the duplex
+    /// reader. Times out after 1s; CI has a comfortable margin for one
+    /// short frame.
+    async fn read_one_framed_response(
+        mut reader: tokio::io::DuplexStream,
+    ) -> crate::jsonrpc::JsonRpcResponse {
+        use tokio::io::AsyncReadExt;
+        let mut buf = Vec::with_capacity(1024);
+        let range = tokio::time::timeout(std::time::Duration::from_secs(1), async {
+            loop {
+                if let Some(pos) = buf.windows(4).position(|w| w == b"\r\n\r\n") {
+                    let header = std::str::from_utf8(&buf[..pos]).expect("header utf-8");
+                    let len: usize = header
+                        .strip_prefix("Content-Length: ")
+                        .expect("Content-Length header")
+                        .trim()
+                        .parse()
+                        .expect("numeric length");
+                    let body_start = pos + 4;
+                    if buf.len() >= body_start + len {
+                        return body_start..body_start + len;
+                    }
+                }
+                let mut chunk = [0u8; 256];
+                let n = reader.read(&mut chunk).await.expect("read");
+                if n == 0 {
+                    panic!("eof before frame complete");
+                }
+                buf.extend_from_slice(&chunk[..n]);
+            }
+        })
+        .await
+        .expect("frame within timeout");
+        serde_json::from_slice(&buf[range]).expect("parse JsonRpcResponse")
+    }
+
+    fn stand_up_router_with_capture() -> (
+        SessionRouter,
+        tokio::io::DuplexStream,
+        crate::jsonrpc::JsonRpcClient,
+    ) {
+        use tokio::sync::{broadcast, mpsc};
+
+        use crate::jsonrpc::JsonRpcClient;
+        let (server_read, client_write) = tokio::io::duplex(64 * 1024);
+        let (client_read, _server_write) = tokio::io::duplex(64);
+        let (notif_tx, _) = broadcast::channel(16);
+        let (req_tx, _req_rx) = mpsc::unbounded_channel();
+        let rpc = JsonRpcClient::new(client_write, client_read, notif_tx, req_tx);
+        let router = SessionRouter::with_writer(rpc.writer_handle());
+        (router, server_read, rpc)
     }
 
     #[tokio::test]
     async fn pending_request_overflow_emits_jsonrpc_error_response() {
-        use tokio::io::AsyncReadExt;
-        use tokio::sync::{broadcast, mpsc};
+        use crate::jsonrpc::error_codes;
 
-        use crate::jsonrpc::{JsonRpcClient, error_codes};
-
-        // Stand up a real JsonRpcClient over a duplex pair so we can read
-        // back the bytes the WriterHandle pushes onto the wire.
-        let (server_read, client_write) = tokio::io::duplex(64 * 1024);
-        let (_client_read, _server_write) = tokio::io::duplex(64);
-        let (notif_tx, _) = broadcast::channel(16);
-        let (req_tx, _req_rx) = mpsc::unbounded_channel();
-        let rpc = JsonRpcClient::new(client_write, _client_read, notif_tx, req_tx);
-        let router = SessionRouter::with_writer(rpc.writer_handle());
+        let (router, server_read, _rpc) = stand_up_router_with_capture();
         let _guard = router.begin_pending_session_routing();
 
         // First buffered request is the one we expect to evict.
@@ -503,37 +607,46 @@ mod tests {
             ));
         }
 
-        // Drain the wire and find an error response with the evicted id.
-        let mut buf = Vec::with_capacity(4096);
-        let mut reader = server_read;
-        tokio::time::timeout(std::time::Duration::from_secs(1), async {
-            while !buf
-                .windows(2)
-                .any(|w| w == b"\r\n" && buf.windows(4).any(|w4| w4 == b"\r\n\r\n"))
-            {
-                let mut chunk = [0u8; 256];
-                let n = reader.read(&mut chunk).await.expect("read frame");
-                if n == 0 {
-                    break;
-                }
-                buf.extend_from_slice(&chunk[..n]);
-            }
-        })
-        .await
-        .expect("frame within timeout");
-
-        let body_start = buf
-            .windows(4)
-            .position(|w| w == b"\r\n\r\n")
-            .expect("header terminator")
-            + 4;
-        let body = std::str::from_utf8(&buf[body_start..]).expect("utf-8 body");
-        let response: JsonRpcResponse =
-            serde_json::from_str(body.trim_end()).expect("parse response");
+        let response = read_one_framed_response(server_read).await;
         assert_eq!(response.id, evicted_id);
         let err = response.error.expect("error payload");
         assert_eq!(err.code, error_codes::INTERNAL_ERROR);
         assert!(err.message.contains("pending session buffer overflow"));
+    }
+
+    #[tokio::test]
+    async fn last_guard_drop_without_register_responds_to_buffered_requests() {
+        use crate::jsonrpc::error_codes;
+
+        let (router, server_read, _rpc) = stand_up_router_with_capture();
+        let guard = router.begin_pending_session_routing();
+
+        let pending_id = 4242;
+        router
+            .state
+            .lock()
+            .route_request(make_request(pending_id, "remote", "userInput.request"));
+        // A buffered notification just gets logged on guard drop.
+        router
+            .state
+            .lock()
+            .route_notification("remote", make_notification("remote", "evt"));
+
+        // Cloud session.create failed; the guard drops without anyone
+        // registering "remote". Buffered request must be responded to so
+        // the runtime doesn't hang.
+        drop(guard);
+
+        let response = read_one_framed_response(server_read).await;
+        assert_eq!(response.id, pending_id);
+        let err = response.error.expect("error payload");
+        assert_eq!(err.code, error_codes::INTERNAL_ERROR);
+        assert!(
+            err.message
+                .contains("pending session routing ended before session was registered")
+        );
+
+        assert!(router.state.lock().pending.is_empty());
     }
 
     #[test]
