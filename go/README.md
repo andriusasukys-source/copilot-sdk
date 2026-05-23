@@ -105,6 +105,7 @@ That's it! When your application calls `copilot.NewClient` without a `Connection
 - `Stop() error` - Stop the CLI server
 - `ForceStop()` - Forcefully stop without graceful cleanup
 - `CreateSession(config *SessionConfig) (*Session, error)` - Create a new session
+- `CreateCloudSession(ctx context.Context, config *SessionConfig) (*Session, error)` - Create a Mission Control–backed cloud session
 - `ResumeSession(sessionID string, config *ResumeSessionConfig) (*Session, error)` - Resume an existing session
 - `ResumeSessionWithOptions(sessionID string, config *ResumeSessionConfig) (*Session, error)` - Resume with additional configuration
 - `ListSessions(filter *SessionListFilter) ([]SessionMetadata, error)` - List sessions (with optional filter)
@@ -169,6 +170,8 @@ Event types: `SessionLifecycleCreated`, `SessionLifecycleDeleted`, `SessionLifec
 - `Hooks` (\*SessionHooks): Hook handlers for session lifecycle events. See [Session Hooks](#session-hooks) section.
 - `Commands` ([]CommandDefinition): Slash-commands registered for this session. See [Commands](#commands) section.
 - `OnElicitationRequest` (ElicitationHandler): Handler for elicitation requests from the server. See [Elicitation Requests](#elicitation-requests-serverclient) section.
+
+- `Cloud` (\*CloudSessionOptions): Cloud session configuration. When set, `CreateSession` rejects the config; use `CreateCloudSession` instead. Do not set `SessionID` or `Provider` when using cloud sessions.
 
 **ResumeSessionConfig:**
 
@@ -486,6 +489,27 @@ When enabled, sessions emit compaction events:
 
 - `session.compaction_start` - Background compaction started
 - `session.compaction_complete` - Compaction finished (includes token counts)
+
+## Cloud Sessions
+
+`CreateCloudSession` creates a Mission Control–backed cloud session. The runtime assigns the session ID; do not set `SessionID` or `Provider` on the config (the SDK rejects both). `CreateSession` also rejects any config that has `Cloud` set.
+
+Any `session.event` notifications or inbound JSON-RPC requests that arrive between sending `session.create` and receiving its response are buffered (bounded, drop-oldest, limit 128 per id) and replayed once the runtime-assigned session ID is registered.
+
+```go
+session, err := client.CreateCloudSession(context.Background(), &copilot.SessionConfig{
+    OnPermissionRequest: copilot.PermissionHandler.ApproveAll,
+    Cloud: &copilot.CloudSessionOptions{
+        Repository: &copilot.CloudSessionRepository{
+            Owner: "github", Name: "copilot-sdk",
+        },
+    },
+})
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Println("cloud session id:", session.SessionID)
+```
 
 ## Custom Providers
 
