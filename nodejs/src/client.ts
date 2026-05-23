@@ -984,6 +984,7 @@ export class CopilotClient {
         let response: {
             sessionId?: unknown;
             workspacePath?: string;
+            remoteUrl?: string;
             capabilities?: { ui?: { elicitation?: boolean } };
         };
         try {
@@ -1035,6 +1036,7 @@ export class CopilotClient {
             })) as {
                 sessionId?: unknown;
                 workspacePath?: string;
+                remoteUrl?: string;
                 capabilities?: { ui?: { elicitation?: boolean } };
             };
         } catch (e) {
@@ -1090,6 +1092,7 @@ export class CopilotClient {
             this.sessions.set(sessionId, session);
             this.setupSessionFs(session, config);
             session["_workspacePath"] = response.workspacePath;
+            session["_remoteUrl"] = response.remoteUrl;
             session.setCapabilities(response.capabilities);
 
             // Drain anything that arrived during the in-flight session.create

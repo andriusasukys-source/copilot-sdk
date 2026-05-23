@@ -936,6 +936,7 @@ func (c *Client) CreateCloudSession(ctx context.Context, config *SessionConfig) 
 
 	sessionID := response.SessionID
 	session := newSession(sessionID, c.client, response.WorkspacePath)
+	session.remoteURL = response.RemoteURL
 
 	session.registerTools(config.Tools)
 	session.registerPermissionHandler(config.OnPermissionRequest)

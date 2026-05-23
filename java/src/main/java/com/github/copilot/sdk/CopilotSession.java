@@ -154,6 +154,7 @@ public final class CopilotSession implements AutoCloseable {
      */
     private volatile String sessionId;
     private volatile String workspacePath;
+    private volatile String remoteUrl;
     private volatile SessionCapabilities capabilities = new SessionCapabilities();
     private final SessionUiApi ui;
     private final JsonRpcClient rpc;
@@ -270,6 +271,31 @@ public final class CopilotSession implements AutoCloseable {
      */
     void setWorkspacePath(String workspacePath) {
         this.workspacePath = workspacePath;
+    }
+
+    /**
+     * Gets the remote URL for a Mission Control–backed cloud session.
+     * <p>
+     * Populated from the {@code remoteUrl} field in the {@code session.create}
+     * response for cloud sessions created via
+     * {@link CopilotClient#createCloudSession}. Returns {@code null} for regular
+     * local sessions.
+     *
+     * @return the remote URL, or {@code null} for local sessions
+     */
+    public String getRemoteUrl() {
+        return remoteUrl;
+    }
+
+    /**
+     * Sets the remote URL. Package-private; called by CopilotClient after
+     * session.create RPC response for cloud sessions.
+     *
+     * @param remoteUrl
+     *            the remote URL
+     */
+    void setRemoteUrl(String remoteUrl) {
+        this.remoteUrl = remoteUrl;
     }
 
     /**

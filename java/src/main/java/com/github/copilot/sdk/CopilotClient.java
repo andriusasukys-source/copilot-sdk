@@ -606,6 +606,7 @@ public final class CopilotClient implements AutoCloseable {
                     var flush = pendingRoutingState.registerAndFlush(returnedId, session, sessions);
 
                     session.setWorkspacePath(response.workspacePath());
+                    session.setRemoteUrl(response.remoteUrl());
                     session.setCapabilities(response.capabilities());
 
                     // Replay buffered session.event notifications

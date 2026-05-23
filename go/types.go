@@ -1413,6 +1413,7 @@ type wireCommand struct {
 type createSessionResponse struct {
 	SessionID     string               `json:"sessionId"`
 	WorkspacePath string               `json:"workspacePath"`
+	RemoteURL     string               `json:"remoteUrl,omitempty"`
 	Capabilities  *SessionCapabilities `json:"capabilities,omitempty"`
 }
 

@@ -52,6 +52,7 @@ type Session struct {
 	// SessionID is the unique identifier for this session.
 	SessionID             string
 	workspacePath         string
+	remoteURL             string
 	client                *jsonrpc2.Client
 	clientSessionApis     *rpc.ClientSessionApiHandlers
 	handlers              []sessionHandler
@@ -92,6 +93,14 @@ type Session struct {
 // Returns empty string if infinite sessions are disabled.
 func (s *Session) WorkspacePath() string {
 	return s.workspacePath
+}
+
+// RemoteURL returns the remote URL for a Mission Control–backed cloud session.
+// Populated from the remoteUrl field in the session.create response for cloud
+// sessions created via CreateCloudSession. Returns empty string for regular
+// local sessions.
+func (s *Session) RemoteURL() string {
+	return s.remoteURL
 }
 
 // newSession creates a new session wrapper with the given session ID and client.

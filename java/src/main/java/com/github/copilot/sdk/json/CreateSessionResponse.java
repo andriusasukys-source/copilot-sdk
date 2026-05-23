@@ -11,6 +11,9 @@ import com.fasterxml.jackson.annotation.JsonProperty;
  * @param workspacePath
  *            the workspace path, or {@code null} if infinite sessions are
  *            disabled
+ * @param remoteUrl
+ *            the remote URL for a cloud session, or {@code null} for local
+ *            sessions
  * @param capabilities
  *            the capabilities reported by the host, or {@code null}
  * @since 1.0.0
@@ -18,5 +21,6 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record CreateSessionResponse(@JsonProperty("sessionId") String sessionId,
         @JsonProperty("workspacePath") String workspacePath,
+        @JsonProperty("remoteUrl") String remoteUrl,
         @JsonProperty("capabilities") SessionCapabilities capabilities) {
 }

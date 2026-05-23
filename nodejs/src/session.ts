@@ -153,6 +153,20 @@ export class CopilotSession {
     }
 
     /**
+     * Remote URL for the Mission Control–backed cloud session.
+     *
+     * Populated from the `remoteUrl` field in the `session.create` response
+     * for cloud sessions created via {@link CopilotClient.createCloudSession}.
+     * Undefined for regular local sessions.
+     */
+    get remoteUrl(): string | undefined {
+        return this._remoteUrl;
+    }
+
+    /** @internal Populated by CopilotClient after session.create returns. */
+    _remoteUrl?: string;
+
+    /**
      * Host capabilities reported when the session was created or resumed.
      * Use this to check feature support before calling capability-gated APIs.
      */
