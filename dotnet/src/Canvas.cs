@@ -203,6 +203,10 @@ internal static class CanvasErrorHelpers
         "canvas_handler_error",
         message);
 
+    // Code is prefixed into the message because RemoteRpcException does not currently
+    // surface the JSON-RPC error.data payload to callers, so the structured code (e.g.
+    // "canvas_action_no_handler") would otherwise be unobservable on the receiving side.
+    // TODO: plumb error.data through RemoteRpcException and drop the prefix here.
     public static LocalRpcInvocationException ToRpcException(CanvasError error) => Build(error.Code, $"{error.Code}: {error.Message}");
 
     private static LocalRpcInvocationException Build(string code, string message)
