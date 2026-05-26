@@ -16,9 +16,10 @@ use github_copilot_sdk::handler::{
     ExitPlanModeHandler, ExitPlanModeResult, UserInputHandler, UserInputResponse,
 };
 use github_copilot_sdk::types::{
-    CommandContext, CommandDefinition, CommandHandler, DeliveryMode, ElicitationRequest,
-    ElicitationResult, ExitPlanModeData, ExtensionInfo, MessageOptions, RequestId, SessionConfig,
-    SessionId, Tool, ToolInvocation, ToolResult,
+    CloudSessionOptions, CloudSessionRepository, CommandContext, CommandDefinition, CommandHandler,
+    DeliveryMode, ElicitationRequest, ElicitationResult, ExitPlanModeData, ExtensionInfo,
+    MessageOptions, ProviderConfig, RequestId, SessionConfig, SessionId, Tool, ToolInvocation,
+    ToolResult,
 };
 use github_copilot_sdk::{Client, tool};
 use serde_json::Value;
@@ -225,6 +226,22 @@ fn requested_session_id(request: &Value) -> &str {
         .expect("session request should include sessionId")
 }
 
+fn cloud_session_config() -> SessionConfig {
+    SessionConfig::default().with_cloud(CloudSessionOptions::with_repository(
+        CloudSessionRepository::new("github", "copilot-sdk").with_branch("main"),
+    ))
+}
+
+fn expect_sdk_error<T>(
+    result: Result<T, github_copilot_sdk::Error>,
+    message: &str,
+) -> github_copilot_sdk::Error {
+    match result {
+        Ok(_) => panic!("{message}"),
+        Err(error) => error,
+    }
+}
+
 #[tokio::test]
 async fn session_subscribe_yields_events_observe_only() {
     let (session, mut server) = create_session_pair().await;
@@ -370,6 +387,287 @@ async fn create_session_sends_canvas_wire_fields() {
     write_framed(&mut server_write, &serde_json::to_vec(&response).unwrap()).await;
 
     timeout(TIMEOUT, create_handle).await.unwrap().unwrap();
+}
+
+#[tokio::test]
+async fn create_session_sends_cloud_create_without_session_id() {
+    let (client, mut server_read, mut server_write) = make_client();
+
+    let create_handle = tokio::spawn({
+        let client = client.clone();
+        async move { client.create_session(cloud_session_config()).await.unwrap() }
+    });
+
+    let request = read_framed(&mut server_read).await;
+    assert_eq!(request["method"], "session.create");
+    assert!(request["params"].get("sessionId").is_none());
+    assert_eq!(request["params"]["cloud"]["repository"]["owner"], "github");
+    assert_eq!(
+        request["params"]["cloud"]["repository"]["name"],
+        "copilot-sdk"
+    );
+    assert_eq!(request["params"]["cloud"]["repository"]["branch"], "main");
+    assert!(request["params"].get("provider").is_none());
+
+    let id = request["id"].as_u64().unwrap();
+    let response = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": id,
+        "result": {
+            "sessionId": "remote-cloud-session",
+            "remoteUrl": "https://copilot.example.test/agents/remote-cloud-session",
+            "capabilities": { "ui": { "elicitation": true } }
+        },
+    });
+    write_framed(&mut server_write, &serde_json::to_vec(&response).unwrap()).await;
+
+    let session = timeout(TIMEOUT, create_handle).await.unwrap().unwrap();
+    assert_eq!(session.id(), "remote-cloud-session");
+    assert_eq!(
+        session.remote_url(),
+        Some("https://copilot.example.test/agents/remote-cloud-session")
+    );
+    assert_eq!(
+        session.capabilities().ui.and_then(|ui| ui.elicitation),
+        Some(true)
+    );
+}
+
+#[tokio::test]
+async fn create_session_rejects_cloud_session_id_and_provider() {
+    let (client, _server_read, _server_write) = make_client();
+
+    let error = expect_sdk_error(
+        client
+            .create_session(cloud_session_config().with_session_id("caller-id"))
+            .await,
+        "cloud create should reject caller session id",
+    );
+    assert!(
+        matches!(error, github_copilot_sdk::Error::InvalidConfig(ref message) if message.contains("session_id")),
+        "unexpected error: {error:?}",
+    );
+
+    let mut config = cloud_session_config();
+    config.provider = Some(ProviderConfig::new("https://api.example.test/v1"));
+    let error = expect_sdk_error(
+        client.create_session(config).await,
+        "cloud create should reject provider",
+    );
+    assert!(
+        matches!(error, github_copilot_sdk::Error::InvalidConfig(ref message) if message.contains("provider")),
+        "unexpected error: {error:?}",
+    );
+}
+
+#[tokio::test]
+async fn create_session_cloud_request_flags_follow_handlers() {
+    struct InputHandler;
+    #[async_trait]
+    impl UserInputHandler for InputHandler {
+        async fn handle(
+            &self,
+            _session_id: SessionId,
+            _question: String,
+            _choices: Option<Vec<String>>,
+            _allow_freeform: Option<bool>,
+        ) -> Option<UserInputResponse> {
+            None
+        }
+    }
+
+    struct ExitHandler;
+    #[async_trait]
+    impl ExitPlanModeHandler for ExitHandler {
+        async fn handle(
+            &self,
+            _session_id: SessionId,
+            _data: ExitPlanModeData,
+        ) -> ExitPlanModeResult {
+            ExitPlanModeResult::default()
+        }
+    }
+
+    struct AutoHandler;
+    #[async_trait]
+    impl AutoModeSwitchHandler for AutoHandler {
+        async fn handle(
+            &self,
+            _session_id: SessionId,
+            _error_code: Option<String>,
+            _retry_after_seconds: Option<f64>,
+        ) -> AutoModeSwitchResponse {
+            AutoModeSwitchResponse::No
+        }
+    }
+
+    struct ElicitHandler;
+    #[async_trait]
+    impl ElicitationHandler for ElicitHandler {
+        async fn handle(
+            &self,
+            _session_id: SessionId,
+            _request_id: RequestId,
+            _request: ElicitationRequest,
+        ) -> ElicitationResult {
+            ElicitationResult {
+                action: "cancel".to_string(),
+                content: None,
+            }
+        }
+    }
+
+    let (client, mut server_read, mut server_write) = make_client();
+
+    let create_handle = tokio::spawn({
+        let client = client.clone();
+        async move {
+            client
+                .create_session(
+                    cloud_session_config()
+                        .with_permission_handler(Arc::new(ApproveAllHandler))
+                        .with_user_input_handler(Arc::new(InputHandler))
+                        .with_exit_plan_mode_handler(Arc::new(ExitHandler))
+                        .with_auto_mode_switch_handler(Arc::new(AutoHandler))
+                        .with_elicitation_handler(Arc::new(ElicitHandler)),
+                )
+                .await
+                .unwrap()
+        }
+    });
+
+    let request = read_framed(&mut server_read).await;
+    assert_eq!(request["method"], "session.create");
+    assert_eq!(request["params"]["requestPermission"], true);
+    assert_eq!(request["params"]["requestUserInput"], true);
+    assert_eq!(request["params"]["requestExitPlanMode"], true);
+    assert_eq!(request["params"]["requestAutoModeSwitch"], true);
+    assert_eq!(request["params"]["requestElicitation"], true);
+
+    let id = request["id"].as_u64().unwrap();
+    let response = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": id,
+        "result": { "sessionId": "remote-cloud-session" },
+    });
+    write_framed(&mut server_write, &serde_json::to_vec(&response).unwrap()).await;
+
+    timeout(TIMEOUT, create_handle).await.unwrap().unwrap();
+}
+
+#[tokio::test]
+async fn create_session_cloud_buffers_early_notifications_until_session_id_is_registered() {
+    let (client, server_read, server_write) = make_client();
+    let mut server = FakeServer {
+        read: server_read,
+        write: server_write,
+        session_id: "remote-cloud-session".to_string(),
+    };
+
+    let create_handle = tokio::spawn({
+        let client = client.clone();
+        async move { client.create_session(cloud_session_config()).await.unwrap() }
+    });
+
+    let request = server.read_request().await;
+    assert_eq!(request["method"], "session.create");
+    server
+        .send_event(
+            "capabilities.changed",
+            serde_json::json!({ "ui": { "elicitation": true } }),
+        )
+        .await;
+    server
+        .respond(
+            &request,
+            serde_json::json!({ "sessionId": server.session_id.clone() }),
+        )
+        .await;
+
+    let session = timeout(TIMEOUT, create_handle).await.unwrap().unwrap();
+    for _ in 0..50 {
+        if session
+            .capabilities()
+            .ui
+            .and_then(|ui| ui.elicitation)
+            .unwrap_or(false)
+        {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    assert_eq!(
+        session.capabilities().ui.and_then(|ui| ui.elicitation),
+        Some(true)
+    );
+}
+
+#[tokio::test]
+async fn create_session_cloud_buffers_early_requests_until_session_id_is_registered() {
+    struct InputHandler;
+    #[async_trait]
+    impl UserInputHandler for InputHandler {
+        async fn handle(
+            &self,
+            _session_id: SessionId,
+            question: String,
+            _choices: Option<Vec<String>>,
+            _allow_freeform: Option<bool>,
+        ) -> Option<UserInputResponse> {
+            assert_eq!(question, "Pick a color");
+            Some(UserInputResponse {
+                answer: "blue".to_string(),
+                was_freeform: true,
+            })
+        }
+    }
+
+    let (client, server_read, server_write) = make_client();
+    let mut server = FakeServer {
+        read: server_read,
+        write: server_write,
+        session_id: "remote-cloud-session".to_string(),
+    };
+
+    let create_handle = tokio::spawn({
+        let client = client.clone();
+        async move {
+            client
+                .create_session(
+                    cloud_session_config().with_user_input_handler(Arc::new(InputHandler)),
+                )
+                .await
+                .unwrap()
+        }
+    });
+
+    let request = server.read_request().await;
+    assert_eq!(request["method"], "session.create");
+    assert_eq!(request["params"]["requestUserInput"], true);
+    server
+        .send_request(
+            301,
+            "userInput.request",
+            serde_json::json!({
+                "sessionId": server.session_id.clone(),
+                "question": "Pick a color",
+                "choices": ["red", "blue"],
+                "allowFreeform": true,
+            }),
+        )
+        .await;
+    server
+        .respond(
+            &request,
+            serde_json::json!({ "sessionId": server.session_id.clone() }),
+        )
+        .await;
+
+    timeout(TIMEOUT, create_handle).await.unwrap().unwrap();
+    let response = timeout(TIMEOUT, server.read_response()).await.unwrap();
+    assert_eq!(response["id"], 301);
+    assert_eq!(response["result"]["answer"], "blue");
+    assert_eq!(response["result"]["wasFreeform"], true);
 }
 
 #[tokio::test]

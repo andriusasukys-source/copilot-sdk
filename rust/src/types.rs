@@ -1188,8 +1188,12 @@ pub struct SessionConfig {
     ///   enabling remote steering
     /// - `On` — export to GitHub AND enable remote steering
     pub remote_session: Option<crate::generated::api_types::RemoteSessionMode>,
-    /// Creates a remote session in the cloud instead of a local session.
-    /// The optional repository is associated with the cloud session.
+    /// Creates a cloud-backed session through
+    /// [`Client::create_session`](crate::Client::create_session).
+    ///
+    /// The runtime assigns the session ID for cloud sessions, so do not set
+    /// [`session_id`](Self::session_id) or [`provider`](Self::provider) when
+    /// this field is set.
     pub cloud: Option<CloudSessionOptions>,
     /// Forward sub-agent streaming events to this connection. When false,
     /// only non-streaming sub-agent events and `subagent.*` lifecycle events
@@ -1406,8 +1410,25 @@ impl SessionConfig {
     ///
     /// [`SessionCreateWire`]: crate::wire::SessionCreateWire
     pub(crate) fn into_wire(
-        mut self,
+        self,
         session_id: SessionId,
+    ) -> Result<(crate::wire::SessionCreateWire, SessionConfigRuntime), crate::Error> {
+        self.into_create_wire(Some(session_id))
+    }
+
+    /// Consume this config to produce the [`SessionCreateWire`] payload for
+    /// cloud `session.create`. Cloud create follows the runtime contract:
+    /// the caller does not provide a `sessionId`; the runtime returns the
+    /// Mission Control task/session ID.
+    pub(crate) fn into_cloud_wire(
+        self,
+    ) -> Result<(crate::wire::SessionCreateWire, SessionConfigRuntime), crate::Error> {
+        self.into_create_wire(None)
+    }
+
+    fn into_create_wire(
+        mut self,
+        session_id: Option<SessionId>,
     ) -> Result<(crate::wire::SessionCreateWire, SessionConfigRuntime), crate::Error> {
         let permission_active =
             self.permission_handler.is_some() || self.permission_policy.is_some();
@@ -1832,7 +1853,8 @@ impl SessionConfig {
         self
     }
 
-    /// Create a remote session in the cloud instead of a local session.
+    /// Create a cloud-backed session through
+    /// [`Client::create_session`](crate::Client::create_session).
     pub fn with_cloud(mut self, cloud: CloudSessionOptions) -> Self {
         self.cloud = Some(cloud);
         self

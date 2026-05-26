@@ -1204,6 +1204,8 @@ impl Client {
         let pid = child.as_ref().and_then(|c| c.id());
         info!(pid = ?pid, "copilot CLI client ready");
 
+        let client_rpc_writer_handle = rpc.writer_handle();
+
         let client = Self {
             inner: Arc::new(ClientInner {
                 child: parking_lot::Mutex::new(child),
@@ -1211,7 +1213,7 @@ impl Client {
                 cwd,
                 request_rx: parking_lot::Mutex::new(Some(request_rx)),
                 notification_tx: notification_broadcast_tx,
-                router: router::SessionRouter::new(),
+                router: router::SessionRouter::with_writer(client_rpc_writer_handle),
                 negotiated_protocol_version: OnceLock::new(),
                 state: parking_lot::Mutex::new(ConnectionState::Connected),
                 lifecycle_tx: broadcast::channel(256).0,
@@ -1224,6 +1226,10 @@ impl Client {
             }),
         };
         client.spawn_lifecycle_dispatcher();
+        client
+            .inner
+            .router
+            .start(&client.inner.notification_tx, &client.inner.request_rx);
         debug!(
             elapsed_ms = setup_start.elapsed().as_millis(),
             pid = ?pid,
@@ -1580,10 +1586,16 @@ impl Client {
         &self,
         session_id: &SessionId,
     ) -> crate::router::SessionChannels {
-        self.inner
-            .router
-            .ensure_started(&self.inner.notification_tx, &self.inner.request_rx);
         self.inner.router.register(session_id)
+    }
+
+    /// Enter pending-routing mode on the router. While the returned guard is
+    /// alive, notifications and requests addressed to session ids that are
+    /// not yet registered are buffered instead of being dropped. Used when
+    /// creating cloud sessions so the SDK can receive events that the
+    /// runtime emits between `session.create` and the response.
+    pub(crate) fn begin_pending_session_routing(&self) -> crate::router::PendingSessionRouting {
+        self.inner.router.begin_pending_session_routing()
     }
 
     /// Unregister a session, dropping its per-session channels.
