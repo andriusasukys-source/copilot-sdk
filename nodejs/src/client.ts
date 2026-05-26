@@ -1386,6 +1386,7 @@ export class CopilotClient {
                 startTime: string;
                 modifiedTime: string;
                 summary?: string;
+                clientName?: string;
                 isRemote: boolean;
                 context?: { cwd: string; gitRoot?: string; repository?: string; branch?: string };
             };
