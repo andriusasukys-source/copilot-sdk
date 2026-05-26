@@ -31,8 +31,6 @@ public record SessionMetadata(
     @JsonProperty("summary") String summary,
     /** Optional human-friendly name set via /rename */
     @JsonProperty("name") String name,
-    /** Runtime client name that created/last resumed this session */
-    @JsonProperty("clientName") String clientName,
     /** True for remote (GitHub) sessions; false for local */
     @JsonProperty("isRemote") Boolean isRemote,
     /** Schema for the `SessionContext` type. */
