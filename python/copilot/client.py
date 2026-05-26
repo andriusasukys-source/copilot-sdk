@@ -805,7 +805,7 @@ class SessionMetadata:
             modified_time=_parse_session_timestamp(modified_time),
             is_remote=bool(is_remote),
             summary=summary,
-            client_name=str(client_name) if client_name is not None else None,
+            client_name=client_name,
             context=context,
         )
 
