@@ -100,8 +100,6 @@ let session = client
 println!("cloud session id: {}", session.id());
 ```
 
-The SDK buffers any `session.event` notifications or inbound JSON-RPC requests that arrive before the `session.create` response (bounded, drop-oldest) and replays them once the runtime-assigned session ID is registered.
-
 ```rust,ignore
 use github_copilot_sdk::MessageOptions;
 

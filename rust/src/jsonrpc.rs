@@ -489,59 +489,6 @@ impl JsonRpcClient {
             ))),
         }
     }
-
-    /// Clone a sync handle onto the outbound writer for fire-and-forget
-    /// frames. Use only for paths that cannot `.await` (currently the
-    /// session router, which holds a `parking_lot::Mutex` while deciding
-    /// to discard a buffered request).
-    pub(crate) fn writer_handle(&self) -> WriterHandle {
-        WriterHandle {
-            write_tx: self.write_tx.clone(),
-        }
-    }
-}
-
-/// Sync, fire-and-forget handle onto the JSON-RPC writer actor. Cloned
-/// from [`JsonRpcClient::writer_handle`]; serializes the message on the
-/// caller's thread and enqueues it without awaiting an ack. Loss of the
-/// ack means we'll never observe a write error here, which is acceptable
-/// for the one current caller (error responses to dropped pending
-/// requests): if the wire is broken, the runtime will time out the
-/// request on its own.
-pub(crate) struct WriterHandle {
-    write_tx: mpsc::UnboundedSender<WriteCommand>,
-}
-
-impl Clone for WriterHandle {
-    fn clone(&self) -> Self {
-        Self {
-            write_tx: self.write_tx.clone(),
-        }
-    }
-}
-
-impl WriterHandle {
-    /// Serialize and enqueue a JSON-RPC message without waiting for the
-    /// writer actor to flush it. Drops silently if serialization fails or
-    /// the writer actor has shut down — both indicate the transport is
-    /// already unusable.
-    pub(crate) fn send_fire_and_forget<T: serde::Serialize>(&self, message: &T) {
-        let body = match serde_json::to_vec(message) {
-            Ok(body) => body,
-            Err(e) => {
-                warn!(error = %e, "WriterHandle failed to serialize fire-and-forget message");
-                return;
-            }
-        };
-        let mut frame = Vec::with_capacity(CONTENT_LENGTH_HEADER.len() + 16 + body.len() + 4);
-        frame.extend_from_slice(CONTENT_LENGTH_HEADER.as_bytes());
-        frame.extend_from_slice(body.len().to_string().as_bytes());
-        frame.extend_from_slice(b"\r\n\r\n");
-        frame.extend_from_slice(&body);
-
-        let (ack_tx, _ack_rx) = oneshot::channel();
-        let _ = self.write_tx.send(WriteCommand { frame, ack: ack_tx });
-    }
 }
 
 /// RAII guard that removes a pending-request entry from the map if the

@@ -969,7 +969,6 @@ impl Client {
         inject_trace_context(&mut params, &trace_ctx);
 
         let setup_start = Instant::now();
-        let pending_guard = self.begin_pending_session_routing();
         tracing::debug!(
             elapsed_ms = setup_start.elapsed().as_millis(),
             tools_count,
@@ -994,9 +993,6 @@ impl Client {
         let create_result: CreateSessionResult = match serde_json::from_value(result) {
             Ok(result) => result,
             Err(error) => {
-                // Keep the pending guard alive across the destroy so any
-                // straggler events for the runtime-assigned id are still
-                // routed (and then dropped on guard release).
                 if let Some(recovered_id) = recovered_session_id {
                     if let Err(destroy_err) = self
                         .call(
@@ -1017,7 +1013,6 @@ impl Client {
                          skipping session.destroy (runtime session may leak)"
                     );
                 }
-                drop(pending_guard);
                 return Err(error.into());
             }
         };
@@ -1027,7 +1022,6 @@ impl Client {
             create_result.capabilities.unwrap_or_default(),
         ));
         let channels = self.register_session(&session_id);
-        drop(pending_guard);
 
         let idle_waiter = Arc::new(ParkingLotMutex::new(None));
         let shutdown = CancellationToken::new();
