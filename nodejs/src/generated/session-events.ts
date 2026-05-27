@@ -5880,6 +5880,10 @@ export interface ExternalToolRequestedData {
    * W3C Trace Context tracestate header for the execute_tool span
    */
   tracestate?: string;
+  /**
+   * Active session working directory, when known.
+   */
+  workingDirectory?: string;
 }
 /**
  * Session event "external_tool.completed". External tool completion notification signaling UI dismissal

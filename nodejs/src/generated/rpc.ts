@@ -2395,6 +2395,20 @@ export interface CanvasProviderCloseRequest {
    */
   instanceId: string;
   host?: CanvasHostContext;
+  session?: CanvasSessionContext;
+}
+/**
+ * Session context supplied by the runtime.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "CanvasSessionContext".
+ */
+/** @experimental */
+export interface CanvasSessionContext {
+  /**
+   * Active session working directory, when known.
+   */
+  workingDirectory?: string;
 }
 /**
  * Canvas action invocation parameters sent to the provider.
@@ -2431,6 +2445,7 @@ export interface CanvasProviderInvokeActionRequest {
     [k: string]: unknown | undefined;
   };
   host?: CanvasHostContext;
+  session?: CanvasSessionContext;
 }
 /**
  * Canvas open parameters sent to the provider.
@@ -2463,6 +2478,7 @@ export interface CanvasProviderOpenRequest {
     [k: string]: unknown | undefined;
   };
   host?: CanvasHostContext;
+  session?: CanvasSessionContext;
 }
 /**
  * Canvas open result returned by the provider.

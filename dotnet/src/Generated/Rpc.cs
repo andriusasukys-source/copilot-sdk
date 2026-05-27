@@ -8104,6 +8104,15 @@ public sealed class CanvasHostContext
     public CanvasHostContextCapabilities? Capabilities { get; set; }
 }
 
+/// <summary>Session context supplied by the runtime.</summary>
+[Experimental(Diagnostics.Experimental)]
+public sealed class CanvasSessionContext
+{
+    /// <summary>Active session working directory, when known.</summary>
+    [JsonPropertyName("workingDirectory")]
+    public string? WorkingDirectory { get; set; }
+}
+
 /// <summary>Canvas open parameters sent to the provider.</summary>
 public sealed class CanvasProviderOpenRequest
 {
@@ -8126,6 +8135,10 @@ public sealed class CanvasProviderOpenRequest
     /// <summary>Stable caller-supplied canvas instance identifier.</summary>
     [JsonPropertyName("instanceId")]
     public string InstanceId { get; set; } = string.Empty;
+
+    /// <summary>Session context supplied by the runtime.</summary>
+    [JsonPropertyName("session")]
+    public CanvasSessionContext? Session { get; set; }
 
     /// <summary>Target session identifier.</summary>
     [JsonPropertyName("sessionId")]
@@ -8150,6 +8163,10 @@ public sealed class CanvasProviderCloseRequest
     /// <summary>Canvas instance identifier.</summary>
     [JsonPropertyName("instanceId")]
     public string InstanceId { get; set; } = string.Empty;
+
+    /// <summary>Session context supplied by the runtime.</summary>
+    [JsonPropertyName("session")]
+    public CanvasSessionContext? Session { get; set; }
 
     /// <summary>Target session identifier.</summary>
     [JsonPropertyName("sessionId")]
@@ -8182,6 +8199,10 @@ public sealed class CanvasProviderInvokeActionRequest
     /// <summary>Canvas instance identifier.</summary>
     [JsonPropertyName("instanceId")]
     public string InstanceId { get; set; } = string.Empty;
+
+    /// <summary>Session context supplied by the runtime.</summary>
+    [JsonPropertyName("session")]
+    public CanvasSessionContext? Session { get; set; }
 
     /// <summary>Target session identifier.</summary>
     [JsonPropertyName("sessionId")]
@@ -15991,6 +16012,7 @@ internal static class ClientSessionApiRegistration
 [JsonSerializable(typeof(CanvasProviderInvokeActionRequest))]
 [JsonSerializable(typeof(CanvasProviderOpenRequest))]
 [JsonSerializable(typeof(CanvasProviderOpenResult))]
+[JsonSerializable(typeof(CanvasSessionContext))]
 [JsonSerializable(typeof(CommandList))]
 [JsonSerializable(typeof(CommandsHandlePendingCommandRequest))]
 [JsonSerializable(typeof(CommandsHandlePendingCommandResult))]

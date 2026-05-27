@@ -1353,6 +1353,22 @@ pub struct CanvasOpenRequest {
     pub instance_id: String,
 }
 
+/// Session context supplied by the runtime.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CanvasSessionContext {
+    /// Active session working directory, when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub working_directory: Option<String>,
+}
+
 /// Canvas close parameters sent to the provider.
 ///
 /// <div class="warning">
@@ -1375,6 +1391,9 @@ pub struct CanvasProviderCloseRequest {
     /// Host context supplied by the runtime.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub host: Option<CanvasHostContext>,
+    /// Session context supplied by the runtime.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session: Option<CanvasSessionContext>,
 }
 
 /// Canvas action invocation parameters sent to the provider.
@@ -1404,6 +1423,9 @@ pub struct CanvasProviderInvokeActionRequest {
     /// Host context supplied by the runtime.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub host: Option<CanvasHostContext>,
+    /// Session context supplied by the runtime.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session: Option<CanvasSessionContext>,
 }
 
 /// Canvas open parameters sent to the provider.
@@ -1431,6 +1453,9 @@ pub struct CanvasProviderOpenRequest {
     /// Host context supplied by the runtime.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub host: Option<CanvasHostContext>,
+    /// Session context supplied by the runtime.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session: Option<CanvasSessionContext>,
 }
 
 /// Canvas open result returned by the provider.

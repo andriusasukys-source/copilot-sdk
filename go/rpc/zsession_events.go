@@ -484,6 +484,8 @@ type ExternalToolRequestedData struct {
 	Traceparent *string `json:"traceparent,omitempty"`
 	// W3C Trace Context tracestate header for the execute_tool span
 	Tracestate *string `json:"tracestate,omitempty"`
+	// Active session working directory, when known.
+	WorkingDirectory *string `json:"workingDirectory,omitempty"`
 }
 
 func (*ExternalToolRequestedData) sessionEventData() {}

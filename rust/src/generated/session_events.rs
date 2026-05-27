@@ -2891,6 +2891,9 @@ pub struct ExternalToolRequestedData {
     /// W3C Trace Context tracestate header for the execute_tool span
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tracestate: Option<String>,
+    /// Active session working directory, when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub working_directory: Option<String>,
 }
 
 /// Session event "external_tool.completed". External tool completion notification signaling UI dismissal

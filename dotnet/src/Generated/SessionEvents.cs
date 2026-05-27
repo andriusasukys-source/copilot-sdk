@@ -3062,6 +3062,11 @@ public sealed partial class ExternalToolRequestedData
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     [JsonPropertyName("tracestate")]
     public string? Tracestate { get; set; }
+
+    /// <summary>Active session working directory, when known.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonPropertyName("workingDirectory")]
+    public string? WorkingDirectory { get; set; }
 }
 
 /// <summary>External tool completion notification signaling UI dismissal.</summary>

@@ -589,6 +589,8 @@ type CanvasProviderCloseRequest struct {
 	Host *CanvasHostContext `json:"host,omitempty"`
 	// Canvas instance identifier
 	InstanceID string `json:"instanceId"`
+	// Session context supplied by the runtime.
+	Session *CanvasSessionContext `json:"session,omitempty"`
 	// Target session identifier
 	SessionID string `json:"sessionId"`
 }
@@ -609,6 +611,8 @@ type CanvasProviderInvokeActionRequest struct {
 	Input any `json:"input,omitempty"`
 	// Canvas instance identifier
 	InstanceID string `json:"instanceId"`
+	// Session context supplied by the runtime.
+	Session *CanvasSessionContext `json:"session,omitempty"`
 	// Target session identifier
 	SessionID string `json:"sessionId"`
 }
@@ -627,6 +631,8 @@ type CanvasProviderOpenRequest struct {
 	Input any `json:"input,omitempty"`
 	// Stable caller-supplied canvas instance identifier
 	InstanceID string `json:"instanceId"`
+	// Session context supplied by the runtime.
+	Session *CanvasSessionContext `json:"session,omitempty"`
 	// Target session identifier
 	SessionID string `json:"sessionId"`
 }
@@ -641,6 +647,14 @@ type CanvasProviderOpenResult struct {
 	Title *string `json:"title,omitempty"`
 	// URL for web-rendered canvases
 	URL *string `json:"url,omitempty"`
+}
+
+// Session context supplied by the runtime.
+// Experimental: CanvasSessionContext is part of an experimental API and may change or be
+// removed.
+type CanvasSessionContext struct {
+	// Active session working directory, when known.
+	WorkingDirectory *string `json:"workingDirectory,omitempty"`
 }
 
 // Slash commands available in the session, after applying any include/exclude filters.

@@ -1595,6 +1595,7 @@ class ExternalToolRequestedData:
     arguments: Any = None
     traceparent: str | None = None
     tracestate: str | None = None
+    working_directory: str | None = None
 
     @staticmethod
     def from_dict(obj: Any) -> "ExternalToolRequestedData":
@@ -1606,6 +1607,7 @@ class ExternalToolRequestedData:
         arguments = obj.get("arguments")
         traceparent = from_union([from_none, from_str], obj.get("traceparent"))
         tracestate = from_union([from_none, from_str], obj.get("tracestate"))
+        working_directory = from_union([from_none, from_str], obj.get("workingDirectory"))
         return ExternalToolRequestedData(
             request_id=request_id,
             session_id=session_id,
@@ -1614,6 +1616,7 @@ class ExternalToolRequestedData:
             arguments=arguments,
             traceparent=traceparent,
             tracestate=tracestate,
+            working_directory=working_directory,
         )
 
     def to_dict(self) -> dict:
@@ -1628,6 +1631,8 @@ class ExternalToolRequestedData:
             result["traceparent"] = from_union([from_none, from_str], self.traceparent)
         if self.tracestate is not None:
             result["tracestate"] = from_union([from_none, from_str], self.tracestate)
+        if self.working_directory is not None:
+            result["workingDirectory"] = from_union([from_none, from_str], self.working_directory)
         return result
 
 
