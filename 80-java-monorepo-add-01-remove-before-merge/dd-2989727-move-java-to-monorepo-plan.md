@@ -9,10 +9,11 @@ The software that currently resides in https://github.com/github/copilot-sdk-jav
 1. [Migration Plan — Phases](#1-migration-plan--phases)
 2. [Permissions and Secrets Challenges](#2-permissions-and-secrets-challenges)
 3. [Naming Convention Proposal](#3-naming-convention-proposal)
-4. [Current Language Separation Assessment](#4-current-language-separation-assessment)5. [Workflow Inventory Tables](#5-workflow-inventory-tables)
-5. [Agents, Skills, Prompts, and Supporting Resources Inventory](#6-agents-skills-prompts-and-supporting-resources-inventory)
-6. [Pitfalls and Risk Register](#7-pitfalls-and-risk-register)
-7. [Post-Migration Verification Checklist](#8-post-migration-verification-checklist)
+4. [Current Language Separation Assessment](#4-current-language-separation-assessment)
+5. [Workflow Inventory Tables](#5-workflow-inventory-tables)
+6. [Agents, Skills, Prompts, and Supporting Resources Inventory](#6-agents-skills-prompts-and-supporting-resources-inventory)
+7. [Pitfalls and Risk Register](#7-pitfalls-and-risk-register)
+8. [Post-Migration Verification Checklist](#8-post-migration-verification-checklist)
 
 - [Appendix A: Files to Copy vs. Merge vs. Delete](#appendix-a-files-to-copy-vs-merge-vs-delete)
 - [Appendix B: Unique Java Concerns vs Other Languages](#appendix-b-unique-java-concerns-vs-other-languages)
@@ -478,50 +479,50 @@ What changes is the **mechanism**: instead of polling a remote repository, the w
 
 ### CI/CD
 
-- [ ] `java-sdk-tests.yml` passes on all 3 OS platforms
-- [ ] `codegen-check.yml` includes Java and passes
-- [ ] `java-codegen-fix.md` compiles and agentic workflow functions
-- [ ] `java-publish.yml` can do a dry-run publish
-- [ ] `java-publish-snapshot.yml` publishes a SNAPSHOT
-- [ ] `java-smoke-test.yml` passes on JDK 17 + JDK 25
-- [ ] `java-deploy-site.yml` successfully deploys docs
+- [x] `java-sdk-tests.yml` passes on all 3 OS platforms
+- [x] `codegen-check.yml` includes Java and passes
+- [x] `java-codegen-fix.md` compiles and agentic workflow functions
+- [x] `java-publish.yml` can do a dry-run publish
+- [x] `java-publish-snapshot.yml` publishes a SNAPSHOT
+- [x] `java-smoke-test.yml` passes on JDK 17 + JDK 25
+- [x] `java-deploy-site.yml` successfully deploys docs
 
 ### Integration
 
-- [ ] `copilot-setup-steps.yml` includes JDK and Maven
-- [ ] `dependabot.yaml` includes Maven ecosystem for `java/`
-- [✅] `CODEOWNERS` includes `java/` path. See https://github.com/github/copilot-sdk-partners/issues/89
-- [ ] `justfile` has all Java targets and `just test` includes Java
-- [ ] `sdk-consistency-review` includes `java/` in path triggers
-- [ ] `issue-triage` knows about `sdk/java` label
+- [x] `copilot-setup-steps.yml` includes JDK and Maven
+- [x] `dependabot.yaml` includes Maven ecosystem for `java/`
+- [x] `CODEOWNERS` includes `java/` path. See https://github.com/github/copilot-sdk-partners/issues/89
+- [x] `justfile` has all Java targets and `just test` includes Java
+- [x] `sdk-consistency-review` includes `java/` in path triggers
+- [x] `issue-triage` knows about `sdk/java` label
 
 ### Code
 
-- [ ] `mvn verify` passes from `java/` directory
+- [x] `mvn verify` passes from `java/` directory
 - [ ] E2E tests use local `test/harness/` and `test/snapshots/` (no cloning)
-- [ ] Java codegen integrated into `scripts/codegen/`
-- [ ] `.lastmerge` exists at `java/.lastmerge`
+- [x] Java codegen integrated into `scripts/codegen/`
+- [x] `.lastmerge` exists at `java/.lastmerge`
 
 ### Documentation
 
-- [ ] Monorepo `README.md` lists Java
-- [ ] `copilot-instructions.md` includes Java governance section (build, test, conventions)
-- [ ] `.github/skills/java-coding-skill/SKILL.md` exists with Java API patterns and coding rules
-- [ ] `java/README.md` links updated to monorepo
-- [ ] Maven Central POM `<scm>` URLs updated
+- [x] Monorepo `README.md` lists Java
+- [x] `copilot-instructions.md` includes Java governance section (build, test, conventions)
+- [x] `.github/skills/java-coding-skill/SKILL.md` exists with Java API patterns and coding rules
+- [x] `java/README.md` links updated to monorepo
+- [x] Maven Central POM `<scm>` URLs updated
 
 ### Agentic Sync
 
-- [ ] `java-reference-impl-sync.md` compiles and detects new dotnet/nodejs changes via local `git log`
-- [ ] `agentic-merge-reference-impl` skill works intra-repo (no cross-repo clone)
-- [ ] `java/.lastmerge` correctly stores monorepo commit SHAs
-- [ ] Sync scripts in `.github/scripts/java/reference-impl-sync/` use local paths
+- [x] `java-reference-impl-sync.md` compiles and detects new dotnet/nodejs changes via local `git log`
+- [x] `agentic-merge-reference-impl` skill works intra-repo (no cross-repo clone)
+- [x] `java/.lastmerge` correctly stores monorepo commit SHAs
+- [x] Sync scripts in `.github/scripts/java/reference-impl-sync/` use local paths
 
 ### Cleanup
 
 - [ ] `copilot-sdk-java` repo archived
-- [ ] No broken links to old repo
-- [ ] No duplicate `agentics-maintenance.yml`
+- [x] No broken links to old repo
+- [x] No duplicate `agentics-maintenance.yml`
 
 ---
 
