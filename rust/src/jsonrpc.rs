@@ -190,7 +190,7 @@ fn extract_response_id(body: &[u8]) -> Option<u64> {
     let after = &head[key_pos + key.len()..];
 
     let mut i = 0;
-    while i < after.len() && matches!(after[i], b' ' | b'\t' | b':') {
+    while i < after.len() && matches!(after[i], b' ' | b'\t' | b'\n' | b'\r' | b':') {
         i += 1;
     }
     let start = i;
@@ -771,6 +771,12 @@ mod tests {
             extract_response_id(br#"{"jsonrpc":"2.0","id":9,"error":{"code":-32603"#),
             Some(9)
         );
+    }
+
+    #[test]
+    fn extract_response_id_handles_json_whitespace_after_id_key() {
+        let body = b"{\r\n  \"jsonrpc\": \"2.0\",\r\n  \"id\"\r\n  :\r\n  4271,\r\n  \"result\": null\r\n}";
+        assert_eq!(extract_response_id(body), Some(4271));
     }
 
     #[test]
