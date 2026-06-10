@@ -1,0 +1,86 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *--------------------------------------------------------------------------------------------*/
+
+import { describe, expect, it } from "vitest";
+import { approveAll } from "../../src/index.js";
+import { createSdkTestContext } from "./harness/sdkTestContext.js";
+
+describe("session.providerEndpoint.get RPC", async () => {
+    const { copilotClient: client } = await createSdkTestContext();
+
+    it("returns the BYOK provider endpoint when a custom provider is configured", async () => {
+        const session = await client.createSession({
+            onPermissionRequest: approveAll,
+            provider: {
+                type: "openai",
+                wireApi: "completions",
+                baseUrl: "https://api.example.test/v1",
+                apiKey: "byok-secret",
+                headers: { "X-Custom-Header": "byok-yes" },
+            },
+        });
+
+        try {
+            const endpoint = await session.rpc.providerEndpoint.get({});
+
+            expect(endpoint.protocol).toBe("openai-completions");
+            expect(endpoint.baseUrl).toBe("https://api.example.test/v1");
+            expect(endpoint.apiKey).toBe("byok-secret");
+            expect(endpoint.headers).toMatchObject({ "X-Custom-Header": "byok-yes" });
+            // Auth and per-request session-token headers should not appear here.
+            expect(endpoint.headers).not.toHaveProperty("Authorization");
+            expect(endpoint.headers).not.toHaveProperty("Copilot-Session-Token");
+            // BYOK sessions never issue a CAPI session token.
+            expect(endpoint.sessionToken).toBeUndefined();
+        } finally {
+            try {
+                await session.disconnect();
+            } catch {
+                // disconnect may fail since the BYOK provider URL is fake
+            }
+        }
+    });
+
+    it("returns the CAPI provider endpoint for an OAuth-authenticated session", async () => {
+        const session = await client.createSession({
+            onPermissionRequest: approveAll,
+        });
+
+        try {
+            const endpoint = await session.rpc.providerEndpoint.get({});
+
+            // Wire protocol defaults to openai-completions when no model picks
+            // an alternative endpoint set.
+            expect(["openai-completions", "openai-responses", "anthropic"]).toContain(endpoint.protocol);
+
+            // CAPI baseUrl is the (proxy) Copilot API URL injected by the harness.
+            expect(endpoint.baseUrl).toMatch(/^https?:\/\//);
+
+            // For CAPI OAuth sessions the apiKey is the resolved GitHub bearer.
+            expect(endpoint.apiKey).toBeTypeOf("string");
+            expect(endpoint.apiKey!.length).toBeGreaterThan(0);
+
+            // Standard CAPI headers should be present, and the Authorization /
+            // session-token headers must not be in `headers` (they're carried
+            // by `apiKey` and `sessionToken` respectively).
+            expect(endpoint.headers["Copilot-Integration-Id"]).toBeTypeOf("string");
+            expect(endpoint.headers["User-Agent"]).toMatch(/Copilot/i);
+            expect(endpoint.headers["X-GitHub-Api-Version"]).toBeTypeOf("string");
+            expect(endpoint.headers["X-Interaction-Id"]).toMatch(/[0-9a-f-]{8,}/);
+            expect(endpoint.headers).not.toHaveProperty("Authorization");
+            expect(endpoint.headers).not.toHaveProperty("Copilot-Session-Token");
+
+            // If a session token came back, it must use the documented header
+            // name and an ISO 8601 expiry. The harness proxy may decline to
+            // issue one — in that case the field is simply omitted.
+            if (endpoint.sessionToken) {
+                expect(endpoint.sessionToken.header).toBe("Copilot-Session-Token");
+                expect(endpoint.sessionToken.token.length).toBeGreaterThan(0);
+                expect(Date.parse(endpoint.sessionToken.expiresAt)).not.toBeNaN();
+            }
+        } finally {
+            await session.disconnect();
+        }
+    });
+});

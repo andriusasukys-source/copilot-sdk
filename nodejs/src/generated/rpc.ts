@@ -1012,6 +1012,20 @@ export type ProviderConfigWireApi =
   /** OpenAI Responses API wire format. */
   | "responses";
 /**
+ * Wire protocol the caller must speak to `baseUrl`. Tells the caller which LLM client library to instantiate.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "ProviderWireProtocol".
+ */
+/** @experimental */
+export type ProviderWireProtocol =
+  /** OpenAI Chat Completions wire format (`/chat/completions`). Use the `openai` client library. */
+  | "openai-completions"
+  /** OpenAI Responses wire format (`/responses`). Use the `openai` client library. */
+  | "openai-responses"
+  /** Anthropic Messages wire format (`/v1/messages`). Use the `@anthropic-ai/sdk` client library. */
+  | "anthropic";
+/**
  * Schema for the `PushAttachment` type.
  *
  * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
@@ -7810,6 +7824,69 @@ export interface ProviderConfigAzure {
   apiVersion?: string;
 }
 /**
+ * A snapshot of the provider endpoint the session is currently configured to talk to, with enough information for an external caller to make inference calls directly against the same backend using the OpenAI or Anthropic client libraries.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "ProviderEndpoint".
+ */
+/** @experimental */
+export interface ProviderEndpoint {
+  protocol: ProviderWireProtocol;
+  /**
+   * Base URL the caller should pass to the LLM client library (e.g. `new OpenAI({ baseURL })` or `new Anthropic({ baseURL })`).
+   */
+  baseUrl: string;
+  /**
+   * Credential for the LLM client constructor (e.g. `new OpenAI({ apiKey })` or `new Anthropic({ apiKey })`). The OpenAI / Anthropic client libraries turn this into the appropriate auth header (typically `Authorization: Bearer …`). Omitted only when the endpoint accepts unauthenticated requests (e.g. a local model server).
+   */
+  apiKey?: string;
+  /**
+   * Static HTTP headers the caller must include on every outbound request. Does NOT include the `Authorization` header (the LLM client library adds that from `apiKey`) and does NOT include the `sessionToken` header (sent separately).
+   */
+  headers: {
+    [k: string]: string | undefined;
+  };
+  sessionToken?: ProviderSessionToken;
+}
+/**
+ * Short-lived, rotating credential the caller must send on every request, in addition to `apiKey` if one is present. Omitted when the endpoint does not require one.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "ProviderSessionToken".
+ */
+/** @experimental */
+export interface ProviderSessionToken {
+  /**
+   * The short-lived token value.
+   */
+  token: string;
+  /**
+   * HTTP header name the token must be sent under.
+   */
+  header: string;
+  /**
+   * The model the token is bound to, when applicable. When set, the token is only valid for requests against this model.
+   */
+  model?: string;
+  /**
+   * When the token expires. Callers should refresh by calling `get` again before this time, or reactively on any 401/403 response from `baseUrl`.
+   */
+  expiresAt: string;
+}
+/**
+ * Optional model identifier to scope the endpoint snapshot to.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "ProviderEndpointGetRequest".
+ */
+/** @experimental */
+export interface ProviderEndpointGetRequest {
+  /**
+   * Model identifier the caller intends to use against the returned endpoint. Used to pick the wire protocol (Anthropic Messages vs. OpenAI Responses vs. OpenAI Chat Completions) and to scope any returned `sessionToken` to that model. When omitted, the session's currently active model is used. Ignored when the session uses a custom provider that doesn't vary by model.
+   */
+  modelId?: string;
+}
+/**
  * File attachment
  *
  * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
@@ -13909,6 +13986,18 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              */
             reload: async (params?: PluginsReloadRequest): Promise<void> =>
                 connection.sendRequest("session.plugins.reload", { sessionId, ...params }),
+        },
+        /** @experimental */
+        providerEndpoint: {
+            /**
+             * Returns the provider endpoint and credentials the session is currently configured to talk to, so the caller can make inference calls directly against the same backend the session uses. May throw for sessions whose authentication scheme is not yet supported.
+             *
+             * @param params Optional model identifier to scope the endpoint snapshot to.
+             *
+             * @returns A snapshot of the provider endpoint the session is currently configured to talk to, with enough information for an external caller to make inference calls directly against the same backend using the OpenAI or Anthropic client libraries.
+             */
+            get: async (params?: ProviderEndpointGetRequest): Promise<ProviderEndpoint> =>
+                connection.sendRequest("session.providerEndpoint.get", { sessionId, ...params }),
         },
         /** @experimental */
         options: {
