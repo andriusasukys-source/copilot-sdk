@@ -7415,6 +7415,65 @@ export interface PlanSqlTodosRow {
   status?: string;
 }
 /**
+ * Todo rows + dependency edges read from the session SQL database.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "PlanReadSqlTodosWithDependenciesResult".
+ */
+/** @experimental */
+export interface PlanReadSqlTodosWithDependenciesResult {
+  /**
+   * Rows from the session SQL todos table, ordered by creation time and id. Empty when no database, no todos table, or the SELECT failed.
+   */
+  rows: PlanSqlTodosWithDependenciesRow[];
+  /**
+   * Edges from the session SQL todo_deps table. Empty when no database, no todo_deps table, or the SELECT failed. Read independently from `rows`, so a broken todo_deps table does not affect the rows result and vice versa.
+   */
+  dependencies: PlanSqlTodosWithDependencies[];
+}
+/**
+ * Schema for the `PlanSqlTodosWithDependenciesRow` type.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "PlanSqlTodosWithDependenciesRow".
+ */
+/** @experimental */
+export interface PlanSqlTodosWithDependenciesRow {
+  /**
+   * Todo identifier.
+   */
+  id?: string;
+  /**
+   * Todo title.
+   */
+  title?: string;
+  /**
+   * Todo description.
+   */
+  description?: string;
+  /**
+   * Todo status.
+   */
+  status?: string;
+}
+/**
+ * Schema for the `PlanSqlTodosWithDependencies` type.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "PlanSqlTodosWithDependencies".
+ */
+/** @experimental */
+export interface PlanSqlTodosWithDependencies {
+  /**
+   * ID of the todo that has the dependency.
+   */
+  todoId: string;
+  /**
+   * ID of the todo it depends on.
+   */
+  dependsOn: string;
+}
+/**
  * Replacement contents to write to the session plan file.
  *
  * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
@@ -13477,6 +13536,13 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              */
             readSqlTodos: async (): Promise<PlanReadSqlTodosResult> =>
                 connection.sendRequest("session.plan.readSqlTodos", { sessionId }),
+            /**
+             * Reads todo rows AND dependency edges from the session SQL database for structured progress UI. Same defensive behavior as readSqlTodos — returns empty arrays when the database, tables, or columns aren't available. Clients should call this on session start and after every `session.todos_changed` event to refresh structured-UI rendering.
+             *
+             * @returns Todo rows + dependency edges read from the session SQL database.
+             */
+            readSqlTodosWithDependencies: async (): Promise<PlanReadSqlTodosWithDependenciesResult> =>
+                connection.sendRequest("session.plan.readSqlTodosWithDependencies", { sessionId }),
         },
         /** @experimental */
         workspaces: {
