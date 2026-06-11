@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { approveAll } from "../../src/index.js";
 import { createSdkTestContext } from "./harness/sdkTestContext.js";
 
-describe("session.providerEndpoint.get RPC", async () => {
+describe("session.provider.getEndpoint RPC", async () => {
     const { copilotClient: client } = await createSdkTestContext();
 
     it("returns the BYOK provider endpoint when a custom provider is configured", async () => {
@@ -22,9 +22,10 @@ describe("session.providerEndpoint.get RPC", async () => {
         });
 
         try {
-            const endpoint = await session.rpc.providerEndpoint.get({});
+            const endpoint = await session.rpc.provider.getEndpoint({});
 
-            expect(endpoint.protocol).toBe("openai-completions");
+            expect(endpoint.type).toBe("openai");
+            expect(endpoint.wireApi).toBe("completions");
             expect(endpoint.baseUrl).toBe("https://api.example.test/v1");
             expect(endpoint.apiKey).toBe("byok-secret");
             expect(endpoint.headers).toMatchObject({ "X-Custom-Header": "byok-yes" });
@@ -48,11 +49,13 @@ describe("session.providerEndpoint.get RPC", async () => {
         });
 
         try {
-            const endpoint = await session.rpc.providerEndpoint.get({});
+            const endpoint = await session.rpc.provider.getEndpoint({});
 
-            // Wire protocol defaults to openai-completions when no model picks
-            // an alternative endpoint set.
-            expect(["openai-completions", "openai-responses", "anthropic"]).toContain(endpoint.protocol);
+            expect(["openai", "azure", "anthropic"]).toContain(endpoint.type);
+            // wireApi is omitted for anthropic; otherwise one of the OpenAI shapes.
+            if (endpoint.type !== "anthropic") {
+                expect(["completions", "responses"]).toContain(endpoint.wireApi);
+            }
 
             // CAPI baseUrl is the (proxy) Copilot API URL injected by the harness.
             expect(endpoint.baseUrl).toMatch(/^https?:\/\//);
@@ -71,13 +74,16 @@ describe("session.providerEndpoint.get RPC", async () => {
             expect(endpoint.headers).not.toHaveProperty("Authorization");
             expect(endpoint.headers).not.toHaveProperty("Copilot-Session-Token");
 
-            // If a session token came back, it must use the documented header
-            // name and an ISO 8601 expiry. The harness proxy may decline to
-            // issue one — in that case the field is simply omitted.
+            // When the omit-modelId path returned an auto-mode session token, it
+            // must use the documented header name and an ISO 8601 expiry. The
+            // harness may have a non-auto model selected, in which case the
+            // field is simply omitted.
             if (endpoint.sessionToken) {
                 expect(endpoint.sessionToken.header).toBe("Copilot-Session-Token");
                 expect(endpoint.sessionToken.token.length).toBeGreaterThan(0);
-                expect(Date.parse(endpoint.sessionToken.expiresAt)).not.toBeNaN();
+                if (endpoint.sessionToken.expiresAt !== undefined) {
+                    expect(Date.parse(endpoint.sessionToken.expiresAt)).not.toBeNaN();
+                }
             }
         } finally {
             await session.disconnect();

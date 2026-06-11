@@ -1012,19 +1012,31 @@ export type ProviderConfigWireApi =
   /** OpenAI Responses API wire format. */
   | "responses";
 /**
- * Wire protocol the caller must speak to `baseUrl`. Tells the caller which LLM client library to instantiate.
+ * Provider family. Matches the `type` field of a BYOK provider config.
  *
  * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
- * via the `definition` "ProviderWireProtocol".
+ * via the `definition` "ProviderEndpointType".
  */
 /** @experimental */
-export type ProviderWireProtocol =
-  /** OpenAI Chat Completions wire format (`/chat/completions`). Use the `openai` client library. */
-  | "openai-completions"
-  /** OpenAI Responses wire format (`/responses`). Use the `openai` client library. */
-  | "openai-responses"
-  /** Anthropic Messages wire format (`/v1/messages`). Use the `@anthropic-ai/sdk` client library. */
+export type ProviderEndpointType =
+  /** OpenAI-compatible endpoint (use the OpenAI client library). */
+  | "openai"
+  /** Azure OpenAI endpoint (use the OpenAI client library with the Azure base URL). */
+  | "azure"
+  /** Anthropic endpoint (use the Anthropic client library). */
   | "anthropic";
+/**
+ * Wire API to be used, when required for the provider type.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "ProviderEndpointWireApi".
+ */
+/** @experimental */
+export type ProviderEndpointWireApi =
+  /** Classic chat-completions request shape. */
+  | "completions"
+  /** Newer responses request shape. */
+  | "responses";
 /**
  * Schema for the `PushAttachment` type.
  *
@@ -2854,6 +2866,10 @@ export interface SlashCommandInfo {
    * Whether the command is experimental
    */
   experimental?: boolean;
+  /**
+   * Whether the command may be the target of `/every` / `/after` schedules. Resolution happens at every tick, so only set this when the command is safe to re-invoke and produces an agent prompt.
+   */
+  schedulable?: boolean;
 }
 /**
  * Optional unstructured input hint
@@ -5398,6 +5414,19 @@ export interface McpUnregisterExternalClientRequest {
   serverName: string;
 }
 /**
+ * Memory configuration for this session.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "MemoryConfiguration".
+ */
+/** @experimental */
+export interface MemoryConfiguration {
+  /**
+   * Whether memory is enabled for the session.
+   */
+  enabled: boolean;
+}
+/**
  * Model identifier and token limits used to compute the context-info breakdown.
  *
  * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
@@ -7824,24 +7853,25 @@ export interface ProviderConfigAzure {
   apiVersion?: string;
 }
 /**
- * A snapshot of the provider endpoint the session is currently configured to talk to, with enough information for an external caller to make inference calls directly against the same backend using the OpenAI or Anthropic client libraries.
+ * A snapshot of the provider endpoint the session is currently configured to talk to.
  *
  * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
  * via the `definition` "ProviderEndpoint".
  */
 /** @experimental */
 export interface ProviderEndpoint {
-  protocol: ProviderWireProtocol;
+  type: ProviderEndpointType;
+  wireApi?: ProviderEndpointWireApi;
   /**
-   * Base URL the caller should pass to the LLM client library (e.g. `new OpenAI({ baseURL })` or `new Anthropic({ baseURL })`).
+   * Base URL to pass to the LLM client library.
    */
   baseUrl: string;
   /**
-   * Credential for the LLM client constructor (e.g. `new OpenAI({ apiKey })` or `new Anthropic({ apiKey })`). The OpenAI / Anthropic client libraries turn this into the appropriate auth header (typically `Authorization: Bearer …`). Omitted only when the endpoint accepts unauthenticated requests (e.g. a local model server).
+   * Long-lived credential to pass to the LLM client. Omitted only when the endpoint accepts unauthenticated requests.
    */
   apiKey?: string;
   /**
-   * Static HTTP headers the caller must include on every outbound request. Does NOT include the `Authorization` header (the LLM client library adds that from `apiKey`) and does NOT include the `sessionToken` header (sent separately).
+   * HTTP headers the caller must include on every outbound request. Does NOT include the `Authorization` header (the LLM client library adds that from `apiKey`) and does NOT include the `sessionToken` header (sent separately).
    */
   headers: {
     [k: string]: string | undefined;
@@ -7869,20 +7899,20 @@ export interface ProviderSessionToken {
    */
   model?: string;
   /**
-   * When the token expires. Callers should refresh by calling `get` again before this time, or reactively on any 401/403 response from `baseUrl`.
+   * When the token expires, if known. Callers should refresh by calling `getEndpoint` again before this time, or reactively on any 401/403 response from `baseUrl`.
    */
-  expiresAt: string;
+  expiresAt?: string;
 }
 /**
  * Optional model identifier to scope the endpoint snapshot to.
  *
  * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
- * via the `definition` "ProviderEndpointGetRequest".
+ * via the `definition` "ProviderGetEndpointRequest".
  */
 /** @experimental */
-export interface ProviderEndpointGetRequest {
+export interface ProviderGetEndpointRequest {
   /**
-   * Model identifier the caller intends to use against the returned endpoint. Used to pick the wire protocol (Anthropic Messages vs. OpenAI Responses vs. OpenAI Chat Completions) and to scope any returned `sessionToken` to that model. When omitted, the session's currently active model is used. Ignored when the session uses a custom provider that doesn't vary by model.
+   * Model identifier the caller intends to use against the returned endpoint. Used to pick the correct wire shape. Omit to use whichever model the session is currently using — that path also surfaces an auto-mode `sessionToken` when applicable, preserving auto-mode billing. When `modelId` is supplied, the response never includes a `sessionToken` and the caller must authorize requests with `apiKey` alone.
    */
   modelId?: string;
 }
@@ -9813,6 +9843,7 @@ export interface SessionOpenOptions {
    * @experimental
    */
   additionalContentExclusionPolicies?: SessionOpenOptionsAdditionalContentExclusionPolicy[];
+  memory?: MemoryConfiguration;
   /**
    * Capabilities enabled for this session.
    */
@@ -13988,16 +14019,16 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
                 connection.sendRequest("session.plugins.reload", { sessionId, ...params }),
         },
         /** @experimental */
-        providerEndpoint: {
+        provider: {
             /**
-             * Returns the provider endpoint and credentials the session is currently configured to talk to, so the caller can make inference calls directly against the same backend the session uses. May throw for sessions whose authentication scheme is not yet supported.
+             * Returns the provider endpoint and credentials the session is currently configured to talk to, so the caller can make inference calls directly against the same backend the session uses.
              *
              * @param params Optional model identifier to scope the endpoint snapshot to.
              *
-             * @returns A snapshot of the provider endpoint the session is currently configured to talk to, with enough information for an external caller to make inference calls directly against the same backend using the OpenAI or Anthropic client libraries.
+             * @returns A snapshot of the provider endpoint the session is currently configured to talk to.
              */
-            get: async (params?: ProviderEndpointGetRequest): Promise<ProviderEndpoint> =>
-                connection.sendRequest("session.providerEndpoint.get", { sessionId, ...params }),
+            getEndpoint: async (params?: ProviderGetEndpointRequest): Promise<ProviderEndpoint> =>
+                connection.sendRequest("session.provider.getEndpoint", { sessionId, ...params }),
         },
         /** @experimental */
         options: {
