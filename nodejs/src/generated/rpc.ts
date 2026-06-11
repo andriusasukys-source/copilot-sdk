@@ -7871,7 +7871,7 @@ export interface ProviderEndpoint {
    */
   apiKey?: string;
   /**
-   * HTTP headers the caller must include on every outbound request. Does NOT include the `Authorization` header (the LLM client library adds that from `apiKey`) and does NOT include the `sessionToken` header (sent separately).
+   * HTTP headers the caller must include on every outbound request.
    */
   headers: {
     [k: string]: string | undefined;
@@ -7912,7 +7912,7 @@ export interface ProviderSessionToken {
 /** @experimental */
 export interface ProviderGetEndpointRequest {
   /**
-   * Model identifier the caller intends to use against the returned endpoint. Used to pick the correct wire shape. Omit to use whichever model the session is currently using — that path also surfaces an auto-mode `sessionToken` when applicable, preserving auto-mode billing. When `modelId` is supplied, the response never includes a `sessionToken` and the caller must authorize requests with `apiKey` alone.
+   * Model identifier the caller intends to use against the returned endpoint. Used to pick the correct wire shape. Omit to use whichever model the session is currently using.
    */
   modelId?: string;
 }

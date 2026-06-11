@@ -34,9 +34,6 @@ describe("session.provider.getEndpoint RPC", async () => {
             expect(endpoint.baseUrl).toBe("https://api.example.test/v1");
             expect(endpoint.apiKey).toBe("byok-secret");
             expect(endpoint.headers).toMatchObject({ "X-Custom-Header": "byok-yes" });
-            // Auth and per-request session-token headers should not appear here.
-            expect(endpoint.headers).not.toHaveProperty("Authorization");
-            expect(endpoint.headers).not.toHaveProperty("Copilot-Session-Token");
             // BYOK sessions never issue a CAPI session token.
             expect(endpoint.sessionToken).toBeUndefined();
         } finally {
@@ -69,15 +66,13 @@ describe("session.provider.getEndpoint RPC", async () => {
             expect(endpoint.apiKey).toBeTypeOf("string");
             expect(endpoint.apiKey!.length).toBeGreaterThan(0);
 
-            // Standard CAPI headers should be present, and the Authorization /
-            // session-token headers must not be in `headers` (they're carried
-            // by `apiKey` and `sessionToken` respectively).
+            // Standard CAPI headers should be present, and Authorization is
+            // surfaced as the runtime sends it (`Bearer <apiKey>`).
             expect(endpoint.headers["Copilot-Integration-Id"]).toBeTypeOf("string");
             expect(endpoint.headers["User-Agent"]).toMatch(/Copilot/i);
             expect(endpoint.headers["X-GitHub-Api-Version"]).toBeTypeOf("string");
             expect(endpoint.headers["X-Interaction-Id"]).toMatch(/[0-9a-f-]{8,}/);
-            expect(endpoint.headers).not.toHaveProperty("Authorization");
-            expect(endpoint.headers).not.toHaveProperty("Copilot-Session-Token");
+            expect(endpoint.headers.Authorization).toBe(`Bearer ${endpoint.apiKey}`);
 
             // When the omit-modelId path returned an auto-mode session token, it
             // must use the documented header name and an ISO 8601 expiry. The
