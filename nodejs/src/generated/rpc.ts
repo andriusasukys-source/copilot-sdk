@@ -7867,7 +7867,7 @@ export interface ProviderEndpoint {
    */
   baseUrl: string;
   /**
-   * Long-lived credential to pass to the LLM client. Omitted only when the endpoint accepts unauthenticated requests.
+   * A credential the caller should use with this endpoint. Omitted only when the endpoint accepts unauthenticated requests.
    */
   apiKey?: string;
   /**
