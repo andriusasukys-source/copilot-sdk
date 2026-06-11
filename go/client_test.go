@@ -892,6 +892,75 @@ func TestListModelsWithCustomHandler(t *testing.T) {
 	}
 }
 
+func TestModelBillingTokenPricesJSON(t *testing.T) {
+	wire := `{
+		"multiplier": 1.5,
+		"tokenPrices": {
+			"inputPrice": 2.0,
+			"outputPrice": 8.0,
+			"cachePrice": 0.5,
+			"batchSize": 1000000,
+			"contextMax": 128000,
+			"longContext": {
+				"inputPrice": 4.0,
+				"outputPrice": 16.0,
+				"cachePrice": 1.0,
+				"contextMax": 1000000
+			}
+		}
+	}`
+
+	var billing ModelBilling
+	if err := json.Unmarshal([]byte(wire), &billing); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+
+	if billing.TokenPrices == nil {
+		t.Fatal("expected TokenPrices to be set")
+	}
+	tp := billing.TokenPrices
+	if tp.InputPrice == nil || *tp.InputPrice != 2.0 {
+		t.Errorf("unexpected InputPrice: %v", tp.InputPrice)
+	}
+	if tp.OutputPrice == nil || *tp.OutputPrice != 8.0 {
+		t.Errorf("unexpected OutputPrice: %v", tp.OutputPrice)
+	}
+	if tp.CachePrice == nil || *tp.CachePrice != 0.5 {
+		t.Errorf("unexpected CachePrice: %v", tp.CachePrice)
+	}
+	if tp.BatchSize == nil || *tp.BatchSize != 1000000 {
+		t.Errorf("unexpected BatchSize: %v", tp.BatchSize)
+	}
+	if tp.ContextMax == nil || *tp.ContextMax != 128000 {
+		t.Errorf("unexpected ContextMax: %v", tp.ContextMax)
+	}
+	if tp.LongContext == nil {
+		t.Fatal("expected LongContext to be set")
+	}
+	lc := tp.LongContext
+	if lc.InputPrice == nil || *lc.InputPrice != 4.0 {
+		t.Errorf("unexpected LongContext.InputPrice: %v", lc.InputPrice)
+	}
+	if lc.ContextMax == nil || *lc.ContextMax != 1000000 {
+		t.Errorf("unexpected LongContext.ContextMax: %v", lc.ContextMax)
+	}
+
+	// Round-trip back to JSON and ensure the nested structure survives.
+	out, err := json.Marshal(billing)
+	if err != nil {
+		t.Fatalf("marshal failed: %v", err)
+	}
+	var reparsed ModelBilling
+	if err := json.Unmarshal(out, &reparsed); err != nil {
+		t.Fatalf("re-unmarshal failed: %v", err)
+	}
+	if reparsed.TokenPrices == nil || reparsed.TokenPrices.LongContext == nil ||
+		reparsed.TokenPrices.LongContext.ContextMax == nil ||
+		*reparsed.TokenPrices.LongContext.ContextMax != 1000000 {
+		t.Errorf("round-trip lost token price data: %s", out)
+	}
+}
+
 func TestListModelsHandlerCachesResults(t *testing.T) {
 	customModels := []ModelInfo{
 		{

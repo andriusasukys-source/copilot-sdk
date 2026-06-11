@@ -18,6 +18,9 @@ from copilot import (
 from copilot.client import (
     CloudSessionOptions,
     CloudSessionRepository,
+    ModelBilling,
+    ModelBillingTokenPrices,
+    ModelBillingTokenPricesLongContext,
     ModelCapabilities,
     ModelInfo,
     ModelLimits,
@@ -502,6 +505,52 @@ class TestInstructionDirectories:
             ]
         finally:
             await client.force_stop()
+
+
+class TestModelBilling:
+    def test_token_prices_round_trip(self):
+        """ModelBilling.from_dict/to_dict round-trips tokenPrices and longContext."""
+        wire = {
+            "multiplier": 1.5,
+            "tokenPrices": {
+                "inputPrice": 2.0,
+                "outputPrice": 8.0,
+                "cachePrice": 0.5,
+                "batchSize": 1000000,
+                "contextMax": 128000,
+                "longContext": {
+                    "inputPrice": 4.0,
+                    "outputPrice": 16.0,
+                    "cachePrice": 1.0,
+                    "contextMax": 1000000,
+                },
+            },
+        }
+
+        billing = ModelBilling.from_dict(wire)
+
+        assert billing.multiplier == 1.5
+        assert isinstance(billing.token_prices, ModelBillingTokenPrices)
+        prices = billing.token_prices
+        assert prices.input_price == 2.0
+        assert prices.output_price == 8.0
+        assert prices.cache_price == 0.5
+        assert prices.batch_size == 1000000
+        assert prices.context_max == 128000
+        assert isinstance(prices.long_context, ModelBillingTokenPricesLongContext)
+        long_context = prices.long_context
+        assert long_context.input_price == 4.0
+        assert long_context.output_price == 16.0
+        assert long_context.cache_price == 1.0
+        assert long_context.context_max == 1000000
+
+        assert billing.to_dict() == wire
+
+    def test_token_prices_absent(self):
+        """ModelBilling without tokenPrices leaves token_prices unset."""
+        billing = ModelBilling.from_dict({"multiplier": 1.0})
+        assert billing.token_prices is None
+        assert billing.to_dict() == {"multiplier": 1.0}
 
 
 class TestOnListModels:

@@ -4170,7 +4170,8 @@ impl InputFormat {
 /// [`crate::rpc`]; they live here so the crate-root
 /// `pub use types::*` surfaces them alongside hand-written SDK types.
 pub use crate::generated::api_types::{
-    Model, ModelBilling, ModelCapabilities, ModelCapabilitiesLimits, ModelCapabilitiesLimitsVision,
+    Model, ModelBilling, ModelBillingTokenPrices, ModelBillingTokenPricesLongContext,
+    ModelCapabilities, ModelCapabilitiesLimits, ModelCapabilitiesLimitsVision,
     ModelCapabilitiesSupports, ModelList, ModelPolicy, PermissionDecision,
     PermissionDecisionApproveOnce, PermissionDecisionReject, PermissionDecisionUserNotAvailable,
 };

@@ -143,7 +143,20 @@ public class MetadataApiTest {
                         "terms": "https://example.com/terms"
                     },
                     "billing": {
-                        "multiplier": 1.5
+                        "multiplier": 1.5,
+                        "tokenPrices": {
+                            "inputPrice": 2.0,
+                            "outputPrice": 8.0,
+                            "cachePrice": 0.5,
+                            "batchSize": 1000000,
+                            "contextMax": 128000,
+                            "longContext": {
+                                "inputPrice": 4.0,
+                                "outputPrice": 16.0,
+                                "cachePrice": 1.0,
+                                "contextMax": 1000000
+                            }
+                        }
                     }
                 }
                 """;
@@ -174,6 +187,23 @@ public class MetadataApiTest {
         // Billing
         assertNotNull(model.getBilling());
         assertEquals(1.5, model.getBilling().getMultiplier());
+
+        // Token prices
+        ModelBillingTokenPrices tokenPrices = model.getBilling().getTokenPrices();
+        assertNotNull(tokenPrices);
+        assertEquals(2.0, tokenPrices.getInputPrice());
+        assertEquals(8.0, tokenPrices.getOutputPrice());
+        assertEquals(0.5, tokenPrices.getCachePrice());
+        assertEquals(1000000, tokenPrices.getBatchSize());
+        assertEquals(128000, tokenPrices.getContextMax());
+
+        // Long context tier
+        ModelBillingTokenPricesLongContext longContext = tokenPrices.getLongContext();
+        assertNotNull(longContext);
+        assertEquals(4.0, longContext.getInputPrice());
+        assertEquals(16.0, longContext.getOutputPrice());
+        assertEquals(1.0, longContext.getCachePrice());
+        assertEquals(1000000, longContext.getContextMax());
     }
 
     @Test
