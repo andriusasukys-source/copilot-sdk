@@ -2,6 +2,11 @@
 
 TypeScript SDK for programmatic control of GitHub Copilot CLI via JSON-RPC.
 
+## Prerequisites
+
+- Node.js ^20.19.0 or >=22.12.0
+- GitHub Copilot CLI installed and in PATH (or provide a custom `connection`)
+
 ## Installation
 
 ```bash
@@ -1032,11 +1037,6 @@ try {
     console.error("Error:", error.message);
 }
 ```
-
-## Requirements
-
-- Node.js ^20.19.0 or >=22.12.0
-- GitHub Copilot CLI installed and in PATH (or provide a custom `connection`)
 
 ## License
 

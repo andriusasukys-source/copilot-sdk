@@ -15,12 +15,12 @@
 
 Java SDK for programmatic control of GitHub Copilot CLI, enabling you to build AI-powered applications and agentic workflows. The Java SDK tracks the official GitHub Copilot SDK family (TypeScript, Python, Go, .NET, and Rust).
 
-## Installation
-
-### Runtime requirements
+## Prerequisites
 
 - Java 17 or later. **JDK 25 recommended**. The distributed jar is a multi-release jar (MR-JAR) and is compiled on JDK 25 with `maven.compiler.release` set to 17. This means, when run on JDK 25 and later, the SDK automatically uses virtual threads for its default internal executor.
 - GitHub Copilot CLI 1.0.55-5. or later installed and in `PATH` (or provide custom `cliPath`)
+
+## Installation
 
 ### Maven
 
