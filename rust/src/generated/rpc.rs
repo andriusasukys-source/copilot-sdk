@@ -2209,6 +2209,13 @@ impl<'a> SessionRpc<'a> {
         }
     }
 
+    /// `session.provider.*` sub-namespace.
+    pub fn provider(&self) -> SessionRpcProvider<'a> {
+        SessionRpcProvider {
+            session: self.session,
+        }
+    }
+
     /// `session.queue.*` sub-namespace.
     pub fn queue(&self) -> SessionRpcQueue<'a> {
         SessionRpcQueue {
@@ -5941,6 +5948,72 @@ impl<'a> SessionRpcPlugins<'a> {
             .call(rpc_methods::SESSION_PLUGINS_RELOAD, Some(wire_params))
             .await?;
         Ok(())
+    }
+}
+
+/// `session.provider.*` RPCs.
+#[derive(Clone, Copy)]
+pub struct SessionRpcProvider<'a> {
+    pub(crate) session: &'a Session,
+}
+
+impl<'a> SessionRpcProvider<'a> {
+    /// Returns the provider endpoint and credentials the session is currently configured to talk to, so the caller can make inference calls directly against the same backend the session uses.
+    ///
+    /// Wire method: `session.provider.getEndpoint`.
+    ///
+    /// # Returns
+    ///
+    /// A snapshot of the provider endpoint the session is currently configured to talk to.
+    ///
+    /// <div class="warning">
+    ///
+    /// **Experimental.** This API is part of an experimental wire-protocol surface
+    /// and may change or be removed in future SDK or CLI releases. Pin both the
+    /// SDK and CLI versions if your code depends on it.
+    ///
+    /// </div>
+    pub async fn get_endpoint(&self) -> Result<ProviderEndpoint, Error> {
+        let wire_params = serde_json::json!({ "sessionId": self.session.id() });
+        let _value = self
+            .session
+            .client()
+            .call(rpc_methods::SESSION_PROVIDER_GETENDPOINT, Some(wire_params))
+            .await?;
+        Ok(serde_json::from_value(_value)?)
+    }
+
+    /// Returns the provider endpoint and credentials the session is currently configured to talk to, so the caller can make inference calls directly against the same backend the session uses.
+    ///
+    /// Wire method: `session.provider.getEndpoint`.
+    ///
+    /// # Parameters
+    ///
+    /// * `params` - Optional model identifier to scope the endpoint snapshot to.
+    ///
+    /// # Returns
+    ///
+    /// A snapshot of the provider endpoint the session is currently configured to talk to.
+    ///
+    /// <div class="warning">
+    ///
+    /// **Experimental.** This API is part of an experimental wire-protocol surface
+    /// and may change or be removed in future SDK or CLI releases. Pin both the
+    /// SDK and CLI versions if your code depends on it.
+    ///
+    /// </div>
+    pub async fn get_endpoint_with_params(
+        &self,
+        params: ProviderGetEndpointRequest,
+    ) -> Result<ProviderEndpoint, Error> {
+        let mut wire_params = serde_json::to_value(params)?;
+        wire_params["sessionId"] = serde_json::Value::String(self.session.id().to_string());
+        let _value = self
+            .session
+            .client()
+            .call(rpc_methods::SESSION_PROVIDER_GETENDPOINT, Some(wire_params))
+            .await?;
+        Ok(serde_json::from_value(_value)?)
     }
 }
 

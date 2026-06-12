@@ -12,6 +12,7 @@ type (
 	AssistantIntentData                                            = rpc.AssistantIntentData
 	AssistantMessageData                                           = rpc.AssistantMessageData
 	AssistantMessageDeltaData                                      = rpc.AssistantMessageDeltaData
+	AssistantMessageServerTools                                    = rpc.AssistantMessageServerTools
 	AssistantMessageStartData                                      = rpc.AssistantMessageStartData
 	AssistantMessageToolRequest                                    = rpc.AssistantMessageToolRequest
 	AssistantMessageToolRequestType                                = rpc.AssistantMessageToolRequestType

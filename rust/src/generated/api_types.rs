@@ -310,6 +310,8 @@ pub mod rpc_methods {
     pub const SESSION_PLUGINS_LIST: &str = "session.plugins.list";
     /// `session.plugins.reload`
     pub const SESSION_PLUGINS_RELOAD: &str = "session.plugins.reload";
+    /// `session.provider.getEndpoint`
+    pub const SESSION_PROVIDER_GETENDPOINT: &str = "session.provider.getEndpoint";
     /// `session.options.update`
     pub const SESSION_OPTIONS_UPDATE: &str = "session.options.update";
     /// `session.lsp.initialize`
@@ -1878,6 +1880,9 @@ pub struct SlashCommandInfo {
     pub kind: SlashCommandKind,
     /// Canonical command name without a leading slash
     pub name: String,
+    /// Whether the command may be the target of `/every` / `/after` schedules. Resolution happens at every tick, so only set this when the command is safe to re-invoke and produces an agent prompt.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub schedulable: Option<bool>,
 }
 
 /// Slash commands available in the session, after applying any include/exclude filters.
@@ -4462,6 +4467,21 @@ pub struct McpStopServerRequest {
 pub(crate) struct McpUnregisterExternalClientRequest {
     /// Server name of the external client to unregister
     pub server_name: String,
+}
+
+/// Memory configuration for this session.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MemoryConfiguration {
+    /// Whether memory is enabled for the session.
+    pub enabled: bool,
 }
 
 /// Model identifier and token limits used to compute the context-info breakdown.
@@ -7134,6 +7154,73 @@ pub struct ProviderConfig {
     pub wire_model: Option<String>,
 }
 
+/// Short-lived, rotating credential the caller must send on every request, in addition to `apiKey` if one is present. Omitted when the endpoint does not require one.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderSessionToken {
+    /// When the token expires, if known. Callers should refresh by calling `getEndpoint` again before this time, or reactively on any 401/403 response from `baseUrl`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expires_at: Option<String>,
+    /// HTTP header name the token must be sent under.
+    pub header: String,
+    /// The model the token is bound to, when applicable. When set, the token is only valid for requests against this model.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    /// The short-lived token value.
+    pub token: String,
+}
+
+/// A snapshot of the provider endpoint the session is currently configured to talk to.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderEndpoint {
+    /// A credential the caller should use with this endpoint. Omitted only when the endpoint accepts unauthenticated requests.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub api_key: Option<String>,
+    /// Base URL to pass to the LLM client library.
+    pub base_url: String,
+    /// HTTP headers the caller must include on every outbound request.
+    pub headers: HashMap<String, String>,
+    /// Short-lived, rotating credential the caller must send on every request, in addition to `apiKey` if one is present. Omitted when the endpoint does not require one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_token: Option<ProviderSessionToken>,
+    /// Provider family. Matches the `type` field of a BYOK provider config.
+    pub r#type: ProviderEndpointType,
+    /// Wire API to be used, when required for the provider type.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub wire_api: Option<ProviderEndpointWireApi>,
+}
+
+/// Optional model identifier to scope the endpoint snapshot to.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderGetEndpointRequest {
+    /// Model identifier the caller intends to use against the returned endpoint. Used to pick the correct wire shape. Omit to use whichever model the session is currently using.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_id: Option<String>,
+}
+
 /// Blob attachment with inline base64-encoded data
 ///
 /// <div class="warning">
@@ -9129,6 +9216,9 @@ pub struct SessionOpenOptions {
     /// Identifier sent to LSP-style integrations.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub lsp_client_name: Option<String>,
+    /// Memory configuration for this session.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub memory: Option<MemoryConfiguration>,
     /// Initial model identifier.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
@@ -14275,6 +14365,34 @@ pub struct SessionPluginsListResult {
     pub plugins: Vec<Plugin>,
 }
 
+/// A snapshot of the provider endpoint the session is currently configured to talk to.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionProviderGetEndpointResult {
+    /// A credential the caller should use with this endpoint. Omitted only when the endpoint accepts unauthenticated requests.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub api_key: Option<String>,
+    /// Base URL to pass to the LLM client library.
+    pub base_url: String,
+    /// HTTP headers the caller must include on every outbound request.
+    pub headers: HashMap<String, String>,
+    /// Short-lived, rotating credential the caller must send on every request, in addition to `apiKey` if one is present. Omitted when the endpoint does not require one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_token: Option<ProviderSessionToken>,
+    /// Provider family. Matches the `type` field of a BYOK provider config.
+    pub r#type: ProviderEndpointType,
+    /// Wire API to be used, when required for the provider type.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub wire_api: Option<ProviderEndpointWireApi>,
+}
+
 /// Indicates whether the session options patch was applied successfully.
 ///
 /// <div class="warning">
@@ -17845,6 +17963,53 @@ pub enum ProviderConfigWireApi {
     #[serde(rename = "completions")]
     Completions,
     /// OpenAI Responses API wire format.
+    #[serde(rename = "responses")]
+    Responses,
+    /// Unknown variant for forward compatibility.
+    #[default]
+    #[serde(other)]
+    Unknown,
+}
+
+/// Provider family. Matches the `type` field of a BYOK provider config.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ProviderEndpointType {
+    /// OpenAI-compatible endpoint (use the OpenAI client library).
+    #[serde(rename = "openai")]
+    Openai,
+    /// Azure OpenAI endpoint (use the OpenAI client library with the Azure base URL).
+    #[serde(rename = "azure")]
+    Azure,
+    /// Anthropic endpoint (use the Anthropic client library).
+    #[serde(rename = "anthropic")]
+    Anthropic,
+    /// Unknown variant for forward compatibility.
+    #[default]
+    #[serde(other)]
+    Unknown,
+}
+
+/// Wire API to be used, when required for the provider type.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ProviderEndpointWireApi {
+    /// Classic chat-completions request shape.
+    #[serde(rename = "completions")]
+    Completions,
+    /// Newer responses request shape.
     #[serde(rename = "responses")]
     Responses,
     /// Unknown variant for forward compatibility.

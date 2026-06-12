@@ -4173,6 +4173,8 @@ pub use crate::generated::api_types::{
     Model, ModelBilling, ModelCapabilities, ModelCapabilitiesLimits, ModelCapabilitiesLimitsVision,
     ModelCapabilitiesSupports, ModelList, ModelPolicy, PermissionDecision,
     PermissionDecisionApproveOnce, PermissionDecisionReject, PermissionDecisionUserNotAvailable,
+    ProviderEndpoint, ProviderEndpointType, ProviderEndpointWireApi, ProviderGetEndpointRequest,
+    ProviderSessionToken,
 };
 
 /// Permission categories the CLI may request approval for.

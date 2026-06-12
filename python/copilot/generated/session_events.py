@@ -285,6 +285,46 @@ class Data:
         return {_compat_to_json_key(key): _compat_to_json_value(value) for key, value in self._values.items() if value is not None}
 
 
+# Experimental: this type is part of an experimental API and may change or be removed.
+@dataclass
+class AssistantMessageServerTools:
+    "Neutral provider-tagged server-side tool-use payload (tool search, advisor) for verbatim round-tripping"
+    provider: str
+    advisor_model: str | None = None
+    function_call_namespaces: dict[str, str] | None = None
+    items: list[Any] | None = None
+    raw_content_blocks: list[Any] | None = None
+
+    @staticmethod
+    def from_dict(obj: Any) -> "AssistantMessageServerTools":
+        assert isinstance(obj, dict)
+        provider = from_str(obj.get("provider"))
+        advisor_model = from_union([from_none, from_str], obj.get("advisorModel"))
+        function_call_namespaces = from_union([from_none, lambda x: from_dict(from_str, x)], obj.get("functionCallNamespaces"))
+        items = from_union([from_none, lambda x: from_list(lambda x: x, x)], obj.get("items"))
+        raw_content_blocks = from_union([from_none, lambda x: from_list(lambda x: x, x)], obj.get("rawContentBlocks"))
+        return AssistantMessageServerTools(
+            provider=provider,
+            advisor_model=advisor_model,
+            function_call_namespaces=function_call_namespaces,
+            items=items,
+            raw_content_blocks=raw_content_blocks,
+        )
+
+    def to_dict(self) -> dict:
+        result: dict = {}
+        result["provider"] = from_str(self.provider)
+        if self.advisor_model is not None:
+            result["advisorModel"] = from_union([from_none, from_str], self.advisor_model)
+        if self.function_call_namespaces is not None:
+            result["functionCallNamespaces"] = from_union([from_none, lambda x: from_dict(from_str, x)], self.function_call_namespaces)
+        if self.items is not None:
+            result["items"] = from_union([from_none, lambda x: from_list(lambda x: x, x)], self.items)
+        if self.raw_content_blocks is not None:
+            result["rawContentBlocks"] = from_union([from_none, lambda x: from_list(lambda x: x, x)], self.raw_content_blocks)
+        return result
+
+
 @dataclass
 class AbortData:
     "Turn abort information including the reason for termination"
@@ -328,10 +368,6 @@ class AssistantMessageData:
     "Assistant response containing text content, optional tool requests, and interaction metadata"
     content: str
     message_id: str
-    # Experimental: this field is part of an experimental API and may change or be removed.
-    anthropic_advisor_blocks: list[Any] | None = None
-    # Experimental: this field is part of an experimental API and may change or be removed.
-    anthropic_advisor_model: str | None = None
     api_call_id: str | None = None
     encrypted_content: str | None = None
     interaction_id: str | None = None
@@ -343,6 +379,7 @@ class AssistantMessageData:
     reasoning_opaque: str | None = None
     reasoning_text: str | None = None
     request_id: str | None = None
+    server_tools: AssistantMessageServerTools | None = None
     service_request_id: str | None = None
     tool_requests: list[AssistantMessageToolRequest] | None = None
     turn_id: str | None = None
@@ -352,8 +389,6 @@ class AssistantMessageData:
         assert isinstance(obj, dict)
         content = from_str(obj.get("content"))
         message_id = from_str(obj.get("messageId"))
-        anthropic_advisor_blocks = from_union([from_none, lambda x: from_list(lambda x: x, x)], obj.get("anthropicAdvisorBlocks"))
-        anthropic_advisor_model = from_union([from_none, from_str], obj.get("anthropicAdvisorModel"))
         api_call_id = from_union([from_none, from_str], obj.get("apiCallId"))
         encrypted_content = from_union([from_none, from_str], obj.get("encryptedContent"))
         interaction_id = from_union([from_none, from_str], obj.get("interactionId"))
@@ -364,14 +399,13 @@ class AssistantMessageData:
         reasoning_opaque = from_union([from_none, from_str], obj.get("reasoningOpaque"))
         reasoning_text = from_union([from_none, from_str], obj.get("reasoningText"))
         request_id = from_union([from_none, from_str], obj.get("requestId"))
+        server_tools = from_union([from_none, AssistantMessageServerTools.from_dict], obj.get("serverTools"))
         service_request_id = from_union([from_none, from_str], obj.get("serviceRequestId"))
         tool_requests = from_union([from_none, lambda x: from_list(AssistantMessageToolRequest.from_dict, x)], obj.get("toolRequests"))
         turn_id = from_union([from_none, from_str], obj.get("turnId"))
         return AssistantMessageData(
             content=content,
             message_id=message_id,
-            anthropic_advisor_blocks=anthropic_advisor_blocks,
-            anthropic_advisor_model=anthropic_advisor_model,
             api_call_id=api_call_id,
             encrypted_content=encrypted_content,
             interaction_id=interaction_id,
@@ -382,6 +416,7 @@ class AssistantMessageData:
             reasoning_opaque=reasoning_opaque,
             reasoning_text=reasoning_text,
             request_id=request_id,
+            server_tools=server_tools,
             service_request_id=service_request_id,
             tool_requests=tool_requests,
             turn_id=turn_id,
@@ -391,10 +426,6 @@ class AssistantMessageData:
         result: dict = {}
         result["content"] = from_str(self.content)
         result["messageId"] = from_str(self.message_id)
-        if self.anthropic_advisor_blocks is not None:
-            result["anthropicAdvisorBlocks"] = from_union([from_none, lambda x: from_list(lambda x: x, x)], self.anthropic_advisor_blocks)
-        if self.anthropic_advisor_model is not None:
-            result["anthropicAdvisorModel"] = from_union([from_none, from_str], self.anthropic_advisor_model)
         if self.api_call_id is not None:
             result["apiCallId"] = from_union([from_none, from_str], self.api_call_id)
         if self.encrypted_content is not None:
@@ -415,6 +446,8 @@ class AssistantMessageData:
             result["reasoningText"] = from_union([from_none, from_str], self.reasoning_text)
         if self.request_id is not None:
             result["requestId"] = from_union([from_none, from_str], self.request_id)
+        if self.server_tools is not None:
+            result["serverTools"] = from_union([from_none, lambda x: to_class(AssistantMessageServerTools, x)], self.server_tools)
         if self.service_request_id is not None:
             result["serviceRequestId"] = from_union([from_none, from_str], self.service_request_id)
         if self.tool_requests is not None:
@@ -7331,6 +7364,7 @@ __all__ = [
     "AssistantIntentData",
     "AssistantMessageData",
     "AssistantMessageDeltaData",
+    "AssistantMessageServerTools",
     "AssistantMessageStartData",
     "AssistantMessageToolRequest",
     "AssistantMessageToolRequestType",

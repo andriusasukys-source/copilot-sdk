@@ -2715,6 +2715,14 @@ type MCPUnregisterExternalClientRequest struct {
 	ServerName string `json:"serverName"`
 }
 
+// Memory configuration for this session.
+// Experimental: MemoryConfiguration is part of an experimental API and may change or be
+// removed.
+type MemoryConfiguration struct {
+	// Whether memory is enabled for the session.
+	Enabled bool `json:"enabled"`
+}
+
 // Model identifier and token limits used to compute the context-info breakdown.
 // Experimental: MetadataContextInfoRequest is part of an experimental API and may change or
 // be removed.
@@ -4552,6 +4560,52 @@ type ProviderConfigAzure struct {
 	APIVersion *string `json:"apiVersion,omitempty"`
 }
 
+// A snapshot of the provider endpoint the session is currently configured to talk to.
+// Experimental: ProviderEndpoint is part of an experimental API and may change or be
+// removed.
+type ProviderEndpoint struct {
+	// A credential the caller should use with this endpoint. Omitted only when the endpoint
+	// accepts unauthenticated requests.
+	APIKey *string `json:"apiKey,omitempty"`
+	// Base URL to pass to the LLM client library.
+	BaseURL string `json:"baseUrl"`
+	// HTTP headers the caller must include on every outbound request.
+	Headers map[string]string `json:"headers"`
+	// Short-lived, rotating credential the caller must send on every request, in addition to
+	// `apiKey` if one is present. Omitted when the endpoint does not require one.
+	SessionToken *ProviderSessionToken `json:"sessionToken,omitempty"`
+	// Provider family. Matches the `type` field of a BYOK provider config.
+	Type ProviderEndpointType `json:"type"`
+	// Wire API to be used, when required for the provider type.
+	WireAPI *ProviderEndpointWireAPI `json:"wireApi,omitempty"`
+}
+
+// Optional model identifier to scope the endpoint snapshot to.
+// Experimental: ProviderGetEndpointRequest is part of an experimental API and may change or
+// be removed.
+type ProviderGetEndpointRequest struct {
+	// Model identifier the caller intends to use against the returned endpoint. Used to pick
+	// the correct wire shape. Omit to use whichever model the session is currently using.
+	ModelID *string `json:"modelId,omitempty"`
+}
+
+// Short-lived, rotating credential the caller must send on every request, in addition to
+// `apiKey` if one is present. Omitted when the endpoint does not require one.
+// Experimental: ProviderSessionToken is part of an experimental API and may change or be
+// removed.
+type ProviderSessionToken struct {
+	// When the token expires, if known. Callers should refresh by calling `getEndpoint` again
+	// before this time, or reactively on any 401/403 response from `baseUrl`.
+	ExpiresAt *time.Time `json:"expiresAt,omitempty"`
+	// HTTP header name the token must be sent under.
+	Header string `json:"header"`
+	// The model the token is bound to, when applicable. When set, the token is only valid for
+	// requests against this model.
+	Model *string `json:"model,omitempty"`
+	// The short-lived token value.
+	Token string `json:"token"`
+}
+
 // Schema for the `PushAttachment` type.
 // Experimental: PushAttachment is part of an experimental API and may change or be removed.
 type PushAttachment interface {
@@ -6020,6 +6074,8 @@ type SessionOpenOptions struct {
 	LogInteractiveShells *bool `json:"logInteractiveShells,omitempty"`
 	// Identifier sent to LSP-style integrations.
 	LspClientName *string `json:"lspClientName,omitempty"`
+	// Memory configuration for this session.
+	Memory *MemoryConfiguration `json:"memory,omitempty"`
 	// Initial model identifier.
 	Model *string `json:"model,omitempty"`
 	// Initial model capability overrides.
@@ -7086,6 +7142,10 @@ type SlashCommandInfo struct {
 	Kind SlashCommandKind `json:"kind"`
 	// Canonical command name without a leading slash
 	Name string `json:"name"`
+	// Whether the command may be the target of `/every` / `/after` schedules. Resolution
+	// happens at every tick, so only set this when the command is safe to re-invoke and
+	// produces an agent prompt.
+	Schedulable *bool `json:"schedulable,omitempty"`
 }
 
 // Optional unstructured input hint
@@ -9375,6 +9435,32 @@ const (
 	ProviderConfigWireAPICompletions ProviderConfigWireAPI = "completions"
 	// OpenAI Responses API wire format.
 	ProviderConfigWireAPIResponses ProviderConfigWireAPI = "responses"
+)
+
+// Provider family. Matches the `type` field of a BYOK provider config.
+// Experimental: ProviderEndpointType is part of an experimental API and may change or be
+// removed.
+type ProviderEndpointType string
+
+const (
+	// Anthropic endpoint (use the Anthropic client library).
+	ProviderEndpointTypeAnthropic ProviderEndpointType = "anthropic"
+	// Azure OpenAI endpoint (use the OpenAI client library with the Azure base URL).
+	ProviderEndpointTypeAzure ProviderEndpointType = "azure"
+	// OpenAI-compatible endpoint (use the OpenAI client library).
+	ProviderEndpointTypeOpenai ProviderEndpointType = "openai"
+)
+
+// Wire API to be used, when required for the provider type.
+// Experimental: ProviderEndpointWireAPI is part of an experimental API and may change or be
+// removed.
+type ProviderEndpointWireAPI string
+
+const (
+	// Classic chat-completions request shape.
+	ProviderEndpointWireAPICompletions ProviderEndpointWireAPI = "completions"
+	// Newer responses request shape.
+	ProviderEndpointWireAPIResponses ProviderEndpointWireAPI = "responses"
 )
 
 // Type of GitHub reference
@@ -14020,6 +14106,41 @@ func (a *PluginsAPI) Reload(ctx context.Context, params ...*PluginsReloadRequest
 	return &result, nil
 }
 
+// Experimental: ProviderAPI contains experimental APIs that may change or be removed.
+type ProviderAPI sessionAPI
+
+// GetEndpoint returns the provider endpoint and credentials the session is currently
+// configured to talk to, so the caller can make inference calls directly against the same
+// backend the session uses.
+//
+// RPC method: session.provider.getEndpoint.
+//
+// Parameters: Optional model identifier to scope the endpoint snapshot to.
+//
+// Returns: A snapshot of the provider endpoint the session is currently configured to talk
+// to.
+func (a *ProviderAPI) GetEndpoint(ctx context.Context, params ...*ProviderGetEndpointRequest) (*ProviderEndpoint, error) {
+	var requestParams *ProviderGetEndpointRequest
+	if len(params) > 0 {
+		requestParams = params[0]
+	}
+	req := map[string]any{"sessionId": a.sessionID}
+	if requestParams != nil {
+		if requestParams.ModelID != nil {
+			req["modelId"] = *requestParams.ModelID
+		}
+	}
+	raw, err := a.client.Request("session.provider.getEndpoint", req)
+	if err != nil {
+		return nil, err
+	}
+	var result ProviderEndpoint
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
 // Experimental: QueueAPI contains experimental APIs that may change or be removed.
 type QueueAPI sessionAPI
 
@@ -15251,6 +15372,7 @@ type SessionRPC struct {
 	Permissions  *PermissionsAPI
 	Plan         *PlanAPI
 	Plugins      *PluginsAPI
+	Provider     *ProviderAPI
 	Queue        *QueueAPI
 	Remote       *RemoteAPI
 	Schedule     *ScheduleAPI
@@ -15461,6 +15583,7 @@ func NewSessionRPC(client *jsonrpc2.Client, sessionID string) *SessionRPC {
 	r.Permissions = (*PermissionsAPI)(&r.common)
 	r.Plan = (*PlanAPI)(&r.common)
 	r.Plugins = (*PluginsAPI)(&r.common)
+	r.Provider = (*ProviderAPI)(&r.common)
 	r.Queue = (*QueueAPI)(&r.common)
 	r.Remote = (*RemoteAPI)(&r.common)
 	r.Schedule = (*ScheduleAPI)(&r.common)
