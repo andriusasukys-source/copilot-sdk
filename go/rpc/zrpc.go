@@ -2715,6 +2715,14 @@ type MCPUnregisterExternalClientRequest struct {
 	ServerName string `json:"serverName"`
 }
 
+// Memory configuration for this session.
+// Experimental: MemoryConfiguration is part of an experimental API and may change or be
+// removed.
+type MemoryConfiguration struct {
+	// Whether memory is enabled for the session.
+	Enabled bool `json:"enabled"`
+}
+
 // Model identifier and token limits used to compute the context-info breakdown.
 // Experimental: MetadataContextInfoRequest is part of an experimental API and may change or
 // be removed.
@@ -4277,7 +4285,32 @@ type PlanReadSQLTodosResult struct {
 	Rows []PlanSQLTodosRow `json:"rows"`
 }
 
-// Schema for the `PlanSqlTodosRow` type.
+// Todo rows + dependency edges read from the session SQL database.
+// Experimental: PlanReadSQLTodosWithDependenciesResult is part of an experimental API and
+// may change or be removed.
+type PlanReadSQLTodosWithDependenciesResult struct {
+	// Edges from the session SQL todo_deps table. Empty when no database, no todo_deps table,
+	// or the SELECT failed. Read independently from `rows`, so a broken todo_deps table does
+	// not affect the rows result and vice versa.
+	Dependencies []PlanSQLTodoDependency `json:"dependencies"`
+	// Rows from the session SQL todos table, ordered by creation time and id. Empty when no
+	// database, no todos table, or the SELECT failed.
+	Rows []PlanSQLTodosRow `json:"rows"`
+}
+
+// A single dependency edge read from the session SQL `todo_deps` table, indicating that one
+// todo must complete before another.
+// Experimental: PlanSQLTodoDependency is part of an experimental API and may change or be
+// removed.
+type PlanSQLTodoDependency struct {
+	// ID of the todo it depends on.
+	DependsOn string `json:"dependsOn"`
+	// ID of the todo that has the dependency.
+	TodoID string `json:"todoId"`
+}
+
+// A single todo row read from the session SQL `todos` table. All fields are optional
+// because the SQL schema is best-effort and the agent may not have populated every column.
 // Experimental: PlanSQLTodosRow is part of an experimental API and may change or be removed.
 type PlanSQLTodosRow struct {
 	// Todo description.
@@ -6020,6 +6053,8 @@ type SessionOpenOptions struct {
 	LogInteractiveShells *bool `json:"logInteractiveShells,omitempty"`
 	// Identifier sent to LSP-style integrations.
 	LspClientName *string `json:"lspClientName,omitempty"`
+	// Memory configuration for this session.
+	Memory *MemoryConfiguration `json:"memory,omitempty"`
 	// Initial model identifier.
 	Model *string `json:"model,omitempty"`
 	// Initial model capability overrides.
@@ -7086,6 +7121,10 @@ type SlashCommandInfo struct {
 	Kind SlashCommandKind `json:"kind"`
 	// Canonical command name without a leading slash
 	Name string `json:"name"`
+	// Whether the command may be the target of `/every` / `/after` schedules. Resolution
+	// happens at every tick, so only set this when the command is safe to re-invoke and
+	// produces an agent prompt.
+	Schedulable *bool `json:"schedulable,omitempty"`
 }
 
 // Optional unstructured input hint
@@ -13935,6 +13974,28 @@ func (a *PlanAPI) ReadSqlTodos(ctx context.Context) (*PlanReadSQLTodosResult, er
 		return nil, err
 	}
 	var result PlanReadSQLTodosResult
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// ReadSqlTodosWithDependencies reads todo rows AND dependency edges from the session SQL
+// database for structured progress UI. Same defensive behavior as readSqlTodos — returns
+// empty arrays when the database, tables, or columns aren't available. Clients should call
+// this on session start and after every `session.todos_changed` event to refresh
+// structured-UI rendering.
+//
+// RPC method: session.plan.readSqlTodosWithDependencies.
+//
+// Returns: Todo rows + dependency edges read from the session SQL database.
+func (a *PlanAPI) ReadSqlTodosWithDependencies(ctx context.Context) (*PlanReadSQLTodosWithDependenciesResult, error) {
+	req := map[string]any{"sessionId": a.sessionID}
+	raw, err := a.client.Request("session.plan.readSqlTodosWithDependencies", req)
+	if err != nil {
+		return nil, err
+	}
+	var result PlanReadSQLTodosWithDependenciesResult
 	if err := json.Unmarshal(raw, &result); err != nil {
 		return nil, err
 	}

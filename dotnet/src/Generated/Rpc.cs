@@ -3584,7 +3584,7 @@ internal sealed class SessionPlanDeleteRequest
     public string SessionId { get; set; } = string.Empty;
 }
 
-/// <summary>Schema for the `PlanSqlTodosRow` type.</summary>
+/// <summary>A single todo row read from the session SQL `todos` table. All fields are optional because the SQL schema is best-effort and the agent may not have populated every column.</summary>
 [Experimental(Diagnostics.Experimental)]
 public sealed class PlanSqlTodosRow
 {
@@ -3617,6 +3617,41 @@ public sealed class PlanReadSqlTodosResult
 /// <summary>Identifies the target session.</summary>
 [Experimental(Diagnostics.Experimental)]
 internal sealed class SessionPlanReadSqlTodosRequest
+{
+    /// <summary>Target session identifier.</summary>
+    [JsonPropertyName("sessionId")]
+    public string SessionId { get; set; } = string.Empty;
+}
+
+/// <summary>A single dependency edge read from the session SQL `todo_deps` table, indicating that one todo must complete before another.</summary>
+[Experimental(Diagnostics.Experimental)]
+public sealed class PlanSqlTodoDependency
+{
+    /// <summary>ID of the todo it depends on.</summary>
+    [JsonPropertyName("dependsOn")]
+    public string DependsOn { get; set; } = string.Empty;
+
+    /// <summary>ID of the todo that has the dependency.</summary>
+    [JsonPropertyName("todoId")]
+    public string TodoId { get; set; } = string.Empty;
+}
+
+/// <summary>Todo rows + dependency edges read from the session SQL database.</summary>
+[Experimental(Diagnostics.Experimental)]
+public sealed class PlanReadSqlTodosWithDependenciesResult
+{
+    /// <summary>Edges from the session SQL todo_deps table. Empty when no database, no todo_deps table, or the SELECT failed. Read independently from `rows`, so a broken todo_deps table does not affect the rows result and vice versa.</summary>
+    [JsonPropertyName("dependencies")]
+    public IList<PlanSqlTodoDependency> Dependencies { get => field ??= []; set; }
+
+    /// <summary>Rows from the session SQL todos table, ordered by creation time and id. Empty when no database, no todos table, or the SELECT failed.</summary>
+    [JsonPropertyName("rows")]
+    public IList<PlanSqlTodosRow> Rows { get => field ??= []; set; }
+}
+
+/// <summary>Identifies the target session.</summary>
+[Experimental(Diagnostics.Experimental)]
+internal sealed class SessionPlanReadSqlTodosWithDependenciesRequest
 {
     /// <summary>Target session identifier.</summary>
     [JsonPropertyName("sessionId")]
@@ -6539,6 +6574,10 @@ public sealed class SlashCommandInfo
     /// <summary>Canonical command name without a leading slash.</summary>
     [JsonPropertyName("name")]
     public string Name { get; set; } = string.Empty;
+
+    /// <summary>Whether the command may be the target of `/every` / `/after` schedules. Resolution happens at every tick, so only set this when the command is safe to re-invoke and produces an agent prompt.</summary>
+    [JsonPropertyName("schedulable")]
+    public bool? Schedulable { get; set; }
 }
 
 /// <summary>Slash commands available in the session, after applying any include/exclude filters.</summary>
@@ -16791,6 +16830,17 @@ public sealed class PlanApi
         var request = new SessionPlanReadSqlTodosRequest { SessionId = _session.SessionId };
         return await CopilotClient.InvokeRpcAsync<PlanReadSqlTodosResult>(_session.Rpc, "session.plan.readSqlTodos", [request], cancellationToken);
     }
+
+    /// <summary>Reads todo rows AND dependency edges from the session SQL database for structured progress UI. Same defensive behavior as readSqlTodos — returns empty arrays when the database, tables, or columns aren't available. Clients should call this on session start and after every `session.todos_changed` event to refresh structured-UI rendering.</summary>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>Todo rows + dependency edges read from the session SQL database.</returns>
+    public async Task<PlanReadSqlTodosWithDependenciesResult> ReadSqlTodosWithDependenciesAsync(CancellationToken cancellationToken = default)
+    {
+        _session.ThrowIfDisposed();
+
+        var request = new SessionPlanReadSqlTodosWithDependenciesRequest { SessionId = _session.SessionId };
+        return await CopilotClient.InvokeRpcAsync<PlanReadSqlTodosWithDependenciesResult>(_session.Rpc, "session.plan.readSqlTodosWithDependencies", [request], cancellationToken);
+    }
 }
 
 /// <summary>Provides session-scoped Workspaces APIs.</summary>
@@ -19176,6 +19226,7 @@ internal static class ClientSessionApiRegistration
 [JsonSerializable(typeof(GitHub.Copilot.AssistantMessageDeltaData), TypeInfoPropertyName = "SessionEventsAssistantMessageDeltaData")]
 [JsonSerializable(typeof(GitHub.Copilot.AssistantMessageDeltaEvent), TypeInfoPropertyName = "SessionEventsAssistantMessageDeltaEvent")]
 [JsonSerializable(typeof(GitHub.Copilot.AssistantMessageEvent), TypeInfoPropertyName = "SessionEventsAssistantMessageEvent")]
+[JsonSerializable(typeof(GitHub.Copilot.AssistantMessageServerTools), TypeInfoPropertyName = "SessionEventsAssistantMessageServerTools")]
 [JsonSerializable(typeof(GitHub.Copilot.AssistantMessageStartData), TypeInfoPropertyName = "SessionEventsAssistantMessageStartData")]
 [JsonSerializable(typeof(GitHub.Copilot.AssistantMessageStartEvent), TypeInfoPropertyName = "SessionEventsAssistantMessageStartEvent")]
 [JsonSerializable(typeof(GitHub.Copilot.AssistantMessageToolRequest), TypeInfoPropertyName = "SessionEventsAssistantMessageToolRequest")]
@@ -19668,6 +19719,8 @@ internal static class ClientSessionApiRegistration
 [JsonSerializable(typeof(PingResult))]
 [JsonSerializable(typeof(PlanReadResult))]
 [JsonSerializable(typeof(PlanReadSqlTodosResult))]
+[JsonSerializable(typeof(PlanReadSqlTodosWithDependenciesResult))]
+[JsonSerializable(typeof(PlanSqlTodoDependency))]
 [JsonSerializable(typeof(PlanSqlTodosRow))]
 [JsonSerializable(typeof(PlanUpdateRequest))]
 [JsonSerializable(typeof(Plugin))]
@@ -19802,6 +19855,7 @@ internal static class ClientSessionApiRegistration
 [JsonSerializable(typeof(SessionPlanDeleteRequest))]
 [JsonSerializable(typeof(SessionPlanReadRequest))]
 [JsonSerializable(typeof(SessionPlanReadSqlTodosRequest))]
+[JsonSerializable(typeof(SessionPlanReadSqlTodosWithDependenciesRequest))]
 [JsonSerializable(typeof(SessionPluginsListRequest))]
 [JsonSerializable(typeof(SessionPruneResult))]
 [JsonSerializable(typeof(SessionQueueClearRequest))]

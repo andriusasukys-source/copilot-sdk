@@ -12,6 +12,7 @@ type (
 	AssistantIntentData                                            = rpc.AssistantIntentData
 	AssistantMessageData                                           = rpc.AssistantMessageData
 	AssistantMessageDeltaData                                      = rpc.AssistantMessageDeltaData
+	AssistantMessageServerTools                                    = rpc.AssistantMessageServerTools
 	AssistantMessageStartData                                      = rpc.AssistantMessageStartData
 	AssistantMessageToolRequest                                    = rpc.AssistantMessageToolRequest
 	AssistantMessageToolRequestType                                = rpc.AssistantMessageToolRequestType
@@ -190,6 +191,7 @@ type (
 	SessionStartData                                               = rpc.SessionStartData
 	SessionTaskCompleteData                                        = rpc.SessionTaskCompleteData
 	SessionTitleChangedData                                        = rpc.SessionTitleChangedData
+	SessionTodosChangedData                                        = rpc.SessionTodosChangedData
 	SessionToolsUpdatedData                                        = rpc.SessionToolsUpdatedData
 	SessionTruncationData                                          = rpc.SessionTruncationData
 	SessionUsageInfoData                                           = rpc.SessionUsageInfoData
@@ -455,6 +457,7 @@ const (
 	SessionEventTypeSessionStart                                       = rpc.SessionEventTypeSessionStart
 	SessionEventTypeSessionTaskComplete                                = rpc.SessionEventTypeSessionTaskComplete
 	SessionEventTypeSessionTitleChanged                                = rpc.SessionEventTypeSessionTitleChanged
+	SessionEventTypeSessionTodosChanged                                = rpc.SessionEventTypeSessionTodosChanged
 	SessionEventTypeSessionToolsUpdated                                = rpc.SessionEventTypeSessionToolsUpdated
 	SessionEventTypeSessionTruncation                                  = rpc.SessionEventTypeSessionTruncation
 	SessionEventTypeSessionUsageInfo                                   = rpc.SessionEventTypeSessionUsageInfo

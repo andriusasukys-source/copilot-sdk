@@ -39,6 +39,8 @@ pub enum SessionEventType {
     SessionPermissionsChanged,
     #[serde(rename = "session.plan_changed")]
     SessionPlanChanged,
+    #[serde(rename = "session.todos_changed")]
+    SessionTodosChanged,
     #[serde(rename = "session.workspace_file_changed")]
     SessionWorkspaceFileChanged,
     #[serde(rename = "session.handoff")]
@@ -229,6 +231,8 @@ pub enum SessionEventData {
     SessionPermissionsChanged(SessionPermissionsChangedData),
     #[serde(rename = "session.plan_changed")]
     SessionPlanChanged(SessionPlanChangedData),
+    #[serde(rename = "session.todos_changed")]
+    SessionTodosChanged(SessionTodosChangedData),
     #[serde(rename = "session.workspace_file_changed")]
     SessionWorkspaceFileChanged(SessionWorkspaceFileChangedData),
     #[serde(rename = "session.handoff")]
@@ -706,6 +710,11 @@ pub struct SessionPlanChangedData {
     /// The type of operation performed on the plan file
     pub operation: PlanChangedOperation,
 }
+
+/// Session event "session.todos_changed". Signal-only event: the agent's todos or todo_deps table was written to. No payload — clients should call session.plan.readSqlTodosWithDependencies() to fetch the current state. Events arrive in order; clients can debounce on arrival if needed.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionTodosChangedData {}
 
 /// Session event "session.workspace_file_changed". Workspace file change details including path and operation type
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -1210,6 +1219,28 @@ pub struct AssistantStreamingDeltaData {
     pub total_response_size_bytes: i64,
 }
 
+/// Neutral provider-tagged server-side tool-use payload (tool search, advisor) for verbatim round-tripping
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AssistantMessageServerTools {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub advisor_model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub function_call_namespaces: Option<HashMap<String, String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub items: Option<Vec<serde_json::Value>>,
+    pub provider: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub raw_content_blocks: Option<Vec<serde_json::Value>>,
+}
+
 /// A tool invocation request from the assistant
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -1242,26 +1273,6 @@ pub struct AssistantMessageToolRequest {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AssistantMessageData {
-    /// Raw Anthropic content array with advisor blocks (server_tool_use, advisor_tool_result) for verbatim round-tripping
-    ///
-    /// <div class="warning">
-    ///
-    /// **Experimental.** This type is part of an experimental wire-protocol surface
-    /// and may change or be removed in future SDK or CLI releases.
-    ///
-    /// </div>
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub anthropic_advisor_blocks: Option<Vec<serde_json::Value>>,
-    /// Anthropic advisor model ID used for this response, for timeline display on replay
-    ///
-    /// <div class="warning">
-    ///
-    /// **Experimental.** This type is part of an experimental wire-protocol surface
-    /// and may change or be removed in future SDK or CLI releases.
-    ///
-    /// </div>
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub anthropic_advisor_model: Option<String>,
     /// Provider's completion / response identifier; shared across all chunks of a single API call. Used to group multi-chunk assistant utterances.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub api_call_id: Option<String>,
@@ -1298,6 +1309,9 @@ pub struct AssistantMessageData {
     /// GitHub request tracing ID (x-github-request-id header) for correlating with server-side logs
     #[serde(skip_serializing_if = "Option::is_none")]
     pub request_id: Option<RequestId>,
+    /// Neutral provider-tagged server-side tool-use payload (tool search, advisor) for verbatim round-tripping
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub server_tools: Option<AssistantMessageServerTools>,
     /// Copilot service request ID (x-copilot-service-request-id header) for CAPI log correlation
     #[serde(skip_serializing_if = "Option::is_none")]
     pub service_request_id: Option<String>,
@@ -1930,7 +1944,7 @@ pub struct SkillInvokedData {
     /// Version of the plugin this skill originated from, when applicable
     #[serde(skip_serializing_if = "Option::is_none")]
     pub plugin_version: Option<String>,
-    /// Source identifier for where the skill was discovered. Known values include: project (workspace skill), inherited (parent-directory skill), personal-copilot (~/.copilot/skills), personal-agents (~/.agents/skills), personal-claude (~/.claude/skills), custom (configured directory), plugin (installed plugin), builtin (bundled runtime skill), and remote (org/enterprise skill)
+    /// Source identifier for where the skill was discovered. Known values include: project (workspace skill), inherited (parent-directory skill), personal-copilot (~/.copilot/skills), personal-agents (~/.agents/skills), custom (configured directory), plugin (installed plugin), builtin (bundled runtime skill), and remote (org/enterprise skill)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source: Option<String>,
     /// What triggered the skill invocation: `user-invoked` (explicit user action, such as via a slash command or UI affordance), `agent-invoked` (agent requested the skill), or `context-load` (loaded as part of another context, such as preloading skills configured on a custom agent or subagent)

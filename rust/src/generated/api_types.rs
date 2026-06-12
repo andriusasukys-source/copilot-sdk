@@ -191,6 +191,9 @@ pub mod rpc_methods {
     pub const SESSION_PLAN_DELETE: &str = "session.plan.delete";
     /// `session.plan.readSqlTodos`
     pub const SESSION_PLAN_READSQLTODOS: &str = "session.plan.readSqlTodos";
+    /// `session.plan.readSqlTodosWithDependencies`
+    pub const SESSION_PLAN_READSQLTODOSWITHDEPENDENCIES: &str =
+        "session.plan.readSqlTodosWithDependencies";
     /// `session.workspaces.getWorkspace`
     pub const SESSION_WORKSPACES_GETWORKSPACE: &str = "session.workspaces.getWorkspace";
     /// `session.workspaces.listFiles`
@@ -1878,6 +1881,9 @@ pub struct SlashCommandInfo {
     pub kind: SlashCommandKind,
     /// Canonical command name without a leading slash
     pub name: String,
+    /// Whether the command may be the target of `/every` / `/after` schedules. Resolution happens at every tick, so only set this when the command is safe to re-invoke and produces an agent prompt.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub schedulable: Option<bool>,
 }
 
 /// Slash commands available in the session, after applying any include/exclude filters.
@@ -4464,6 +4470,21 @@ pub(crate) struct McpUnregisterExternalClientRequest {
     pub server_name: String,
 }
 
+/// Memory configuration for this session.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MemoryConfiguration {
+    /// Whether memory is enabled for the session.
+    pub enabled: bool,
+}
+
 /// Model identifier and token limits used to compute the context-info breakdown.
 ///
 /// <div class="warning">
@@ -6674,7 +6695,7 @@ pub struct PlanReadResult {
     pub path: Option<String>,
 }
 
-/// Schema for the `PlanSqlTodosRow` type.
+/// A single todo row read from the session SQL `todos` table. All fields are optional because the SQL schema is best-effort and the agent may not have populated every column.
 ///
 /// <div class="warning">
 ///
@@ -6711,6 +6732,40 @@ pub struct PlanSqlTodosRow {
 #[serde(rename_all = "camelCase")]
 pub struct PlanReadSqlTodosResult {
     /// Rows from the session SQL todos table, ordered by creation time and id.
+    pub rows: Vec<PlanSqlTodosRow>,
+}
+
+/// A single dependency edge read from the session SQL `todo_deps` table, indicating that one todo must complete before another.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanSqlTodoDependency {
+    /// ID of the todo it depends on.
+    pub depends_on: String,
+    /// ID of the todo that has the dependency.
+    pub todo_id: String,
+}
+
+/// Todo rows + dependency edges read from the session SQL database.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanReadSqlTodosWithDependenciesResult {
+    /// Edges from the session SQL todo_deps table. Empty when no database, no todo_deps table, or the SELECT failed. Read independently from `rows`, so a broken todo_deps table does not affect the rows result and vice versa.
+    pub dependencies: Vec<PlanSqlTodoDependency>,
+    /// Rows from the session SQL todos table, ordered by creation time and id. Empty when no database, no todos table, or the SELECT failed.
     pub rows: Vec<PlanSqlTodosRow>,
 }
 
@@ -9129,6 +9184,9 @@ pub struct SessionOpenOptions {
     /// Identifier sent to LSP-style integrations.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub lsp_client_name: Option<String>,
+    /// Memory configuration for this session.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub memory: Option<MemoryConfiguration>,
     /// Initial model identifier.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
@@ -13219,6 +13277,38 @@ pub struct SessionPlanReadSqlTodosParams {
 #[serde(rename_all = "camelCase")]
 pub struct SessionPlanReadSqlTodosResult {
     /// Rows from the session SQL todos table, ordered by creation time and id.
+    pub rows: Vec<PlanSqlTodosRow>,
+}
+
+/// Identifies the target session.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionPlanReadSqlTodosWithDependenciesParams {
+    /// Target session identifier
+    pub session_id: SessionId,
+}
+
+/// Todo rows + dependency edges read from the session SQL database.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionPlanReadSqlTodosWithDependenciesResult {
+    /// Edges from the session SQL todo_deps table. Empty when no database, no todo_deps table, or the SELECT failed. Read independently from `rows`, so a broken todo_deps table does not affect the rows result and vice versa.
+    pub dependencies: Vec<PlanSqlTodoDependency>,
+    /// Rows from the session SQL todos table, ordered by creation time and id. Empty when no database, no todos table, or the SELECT failed.
     pub rows: Vec<PlanSqlTodosRow>,
 }
 

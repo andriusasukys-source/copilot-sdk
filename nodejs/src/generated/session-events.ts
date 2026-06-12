@@ -2689,18 +2689,6 @@ export interface AssistantMessageEvent {
  */
 export interface AssistantMessageData {
   /**
-   * Raw Anthropic content array with advisor blocks (server_tool_use, advisor_tool_result) for verbatim round-tripping
-   *
-   * @experimental
-   */
-  anthropicAdvisorBlocks?: unknown[];
-  /**
-   * Anthropic advisor model ID used for this response, for timeline display on replay
-   *
-   * @experimental
-   */
-  anthropicAdvisorModel?: string;
-  /**
    * Provider's completion / response identifier; shared across all chunks of a single API call. Used to group multi-chunk assistant utterances.
    */
   apiCallId?: string;
@@ -2749,6 +2737,7 @@ export interface AssistantMessageData {
    * GitHub request tracing ID (x-github-request-id header) for correlating with server-side logs
    */
   requestId?: string;
+  serverTools?: AssistantMessageServerTools;
   /**
    * Copilot service request ID (x-copilot-service-request-id header) for CAPI log correlation
    */
@@ -2761,6 +2750,19 @@ export interface AssistantMessageData {
    * Identifier for the agent loop turn that produced this message, matching the corresponding assistant.turn_start event
    */
   turnId?: string;
+}
+/**
+ * Neutral provider-tagged server-side tool-use payload (tool search, advisor) for verbatim round-tripping
+ */
+/** @experimental */
+export interface AssistantMessageServerTools {
+  advisorModel?: string;
+  functionCallNamespaces?: {
+    [k: string]: string | undefined;
+  };
+  items?: unknown[];
+  provider: string;
+  rawContentBlocks?: unknown[];
 }
 /**
  * A tool invocation request from the assistant
@@ -3897,7 +3899,7 @@ export interface SkillInvokedData {
    */
   pluginVersion?: string;
   /**
-   * Source identifier for where the skill was discovered. Known values include: project (workspace skill), inherited (parent-directory skill), personal-copilot (~/.copilot/skills), personal-agents (~/.agents/skills), personal-claude (~/.claude/skills), custom (configured directory), plugin (installed plugin), builtin (bundled runtime skill), and remote (org/enterprise skill)
+   * Source identifier for where the skill was discovered. Known values include: project (workspace skill), inherited (parent-directory skill), personal-copilot (~/.copilot/skills), personal-agents (~/.agents/skills), custom (configured directory), plugin (installed plugin), builtin (bundled runtime skill), and remote (org/enterprise skill)
    */
   source?: string;
   trigger?: SkillInvokedTrigger;

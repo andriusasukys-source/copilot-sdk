@@ -5862,6 +5862,36 @@ impl<'a> SessionRpcPlan<'a> {
             .await?;
         Ok(serde_json::from_value(_value)?)
     }
+
+    /// Reads todo rows AND dependency edges from the session SQL database for structured progress UI. Same defensive behavior as readSqlTodos — returns empty arrays when the database, tables, or columns aren't available. Clients should call this on session start and after every `session.todos_changed` event to refresh structured-UI rendering.
+    ///
+    /// Wire method: `session.plan.readSqlTodosWithDependencies`.
+    ///
+    /// # Returns
+    ///
+    /// Todo rows + dependency edges read from the session SQL database.
+    ///
+    /// <div class="warning">
+    ///
+    /// **Experimental.** This API is part of an experimental wire-protocol surface
+    /// and may change or be removed in future SDK or CLI releases. Pin both the
+    /// SDK and CLI versions if your code depends on it.
+    ///
+    /// </div>
+    pub async fn read_sql_todos_with_dependencies(
+        &self,
+    ) -> Result<PlanReadSqlTodosWithDependenciesResult, Error> {
+        let wire_params = serde_json::json!({ "sessionId": self.session.id() });
+        let _value = self
+            .session
+            .client()
+            .call(
+                rpc_methods::SESSION_PLAN_READSQLTODOSWITHDEPENDENCIES,
+                Some(wire_params),
+            )
+            .await?;
+        Ok(serde_json::from_value(_value)?)
+    }
 }
 
 /// `session.plugins.*` RPCs.

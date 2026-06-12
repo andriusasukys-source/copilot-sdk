@@ -2700,6 +2700,7 @@ func (r *SessionOpenOptions) UnmarshalJSON(data []byte) error {
 		IsExperimentalMode                     *bool                                                `json:"isExperimentalMode,omitempty"`
 		LogInteractiveShells                   *bool                                                `json:"logInteractiveShells,omitempty"`
 		LspClientName                          *string                                              `json:"lspClientName,omitempty"`
+		Memory                                 *MemoryConfiguration                                 `json:"memory,omitempty"`
 		Model                                  *string                                              `json:"model,omitempty"`
 		ModelCapabilitiesOverrides             *ModelCapabilitiesOverride                           `json:"modelCapabilitiesOverrides,omitempty"`
 		Name                                   *string                                              `json:"name,omitempty"`
@@ -2759,6 +2760,7 @@ func (r *SessionOpenOptions) UnmarshalJSON(data []byte) error {
 	r.IsExperimentalMode = raw.IsExperimentalMode
 	r.LogInteractiveShells = raw.LogInteractiveShells
 	r.LspClientName = raw.LspClientName
+	r.Memory = raw.Memory
 	r.Model = raw.Model
 	r.ModelCapabilitiesOverrides = raw.ModelCapabilitiesOverrides
 	r.Name = raw.Name
