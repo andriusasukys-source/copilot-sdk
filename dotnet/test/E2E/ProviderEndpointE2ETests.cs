@@ -14,10 +14,8 @@ public class ProviderEndpointE2ETests(E2ETestFixture fixture, ITestOutputHelper 
     : E2ETestBase(fixture, "provider-endpoint", output)
 {
     /// <summary>
-    /// Creates a client with the provider-endpoint API opt-in env var set. The
-    /// runtime gates `session.provider.getEndpoint` behind
-    /// COPILOT_ALLOW_GET_PROVIDER_ENDPOINT so callers don't depend on it
-    /// accidentally while the API is still experimental.
+    /// Creates a client with the provider-endpoint API opt-in env var
+    /// (COPILOT_ALLOW_GET_PROVIDER_ENDPOINT) set on the CLI subprocess.
     /// </summary>
     private CopilotClient CreateProviderEndpointClient()
     {
