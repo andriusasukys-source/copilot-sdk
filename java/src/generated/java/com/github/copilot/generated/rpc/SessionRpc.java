@@ -89,8 +89,6 @@ public final class SessionRpc {
     public final SessionRemoteApi remote;
     /** API methods for the {@code schedule} namespace. */
     public final SessionScheduleApi schedule;
-    /** API methods for the {@code provider} namespace. */
-    public final SessionProviderApi provider;
 
     /**
      * Creates a new session RPC client.
@@ -131,7 +129,6 @@ public final class SessionRpc {
         this.usage = new SessionUsageApi(caller, sessionId);
         this.remote = new SessionRemoteApi(caller, sessionId);
         this.schedule = new SessionScheduleApi(caller, sessionId);
-        this.provider = new SessionProviderApi(caller, sessionId);
     }
 
     /**
