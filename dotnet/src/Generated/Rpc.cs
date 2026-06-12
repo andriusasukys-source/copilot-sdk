@@ -5607,6 +5607,80 @@ internal sealed class PluginsReloadRequestWithSession
     public string SessionId { get; set; } = string.Empty;
 }
 
+/// <summary>Short-lived, rotating credential the caller must send on every request, in addition to `apiKey` if one is present. Omitted when the endpoint does not require one.</summary>
+[Experimental(Diagnostics.Experimental)]
+public sealed class ProviderSessionToken
+{
+    /// <summary>When the token expires, if known. Callers should refresh by calling `getEndpoint` again before this time, or reactively on any 401/403 response from `baseUrl`.</summary>
+    [JsonPropertyName("expiresAt")]
+    public DateTimeOffset? ExpiresAt { get; set; }
+
+    /// <summary>HTTP header name the token must be sent under.</summary>
+    [JsonPropertyName("header")]
+    public string Header { get; set; } = string.Empty;
+
+    /// <summary>The model the token is bound to, when applicable. When set, the token is only valid for requests against this model.</summary>
+    [JsonPropertyName("model")]
+    public string? Model { get; set; }
+
+    /// <summary>The short-lived token value.</summary>
+    [JsonPropertyName("token")]
+    public string Token { get; set; } = string.Empty;
+}
+
+/// <summary>A snapshot of the provider endpoint the session is currently configured to talk to.</summary>
+[Experimental(Diagnostics.Experimental)]
+public sealed class ProviderEndpoint
+{
+    /// <summary>A credential the caller should use with this endpoint. Omitted only when the endpoint accepts unauthenticated requests.</summary>
+    [JsonPropertyName("apiKey")]
+    public string? ApiKey { get; set; }
+
+    /// <summary>Base URL to pass to the LLM client library.</summary>
+    [Url]
+    [StringSyntax(StringSyntaxAttribute.Uri)]
+    [JsonPropertyName("baseUrl")]
+    public string BaseUrl { get; set; } = string.Empty;
+
+    /// <summary>HTTP headers the caller must include on every outbound request.</summary>
+    [JsonPropertyName("headers")]
+    public IDictionary<string, string> Headers { get => field ??= new Dictionary<string, string>(); set; }
+
+    /// <summary>Short-lived, rotating credential the caller must send on every request, in addition to `apiKey` if one is present. Omitted when the endpoint does not require one.</summary>
+    [JsonPropertyName("sessionToken")]
+    public ProviderSessionToken? SessionToken { get; set; }
+
+    /// <summary>Provider family. Matches the `type` field of a BYOK provider config.</summary>
+    [JsonPropertyName("type")]
+    public ProviderEndpointType Type { get; set; }
+
+    /// <summary>Wire API to be used, when required for the provider type.</summary>
+    [JsonPropertyName("wireApi")]
+    public ProviderEndpointWireApi? WireApi { get; set; }
+}
+
+/// <summary>Optional model identifier to scope the endpoint snapshot to.</summary>
+[Experimental(Diagnostics.Experimental)]
+public sealed class ProviderGetEndpointRequest
+{
+    /// <summary>Model identifier the caller intends to use against the returned endpoint. Used to pick the correct wire shape. Omit to use whichever model the session is currently using.</summary>
+    [JsonPropertyName("modelId")]
+    public string? ModelId { get; set; }
+}
+
+/// <summary>Optional model identifier to scope the endpoint snapshot to.</summary>
+[Experimental(Diagnostics.Experimental)]
+internal sealed class ProviderGetEndpointRequestWithSession
+{
+    /// <summary>Model identifier the caller intends to use against the returned endpoint. Used to pick the correct wire shape. Omit to use whichever model the session is currently using.</summary>
+    [JsonPropertyName("modelId")]
+    public string? ModelId { get; set; }
+
+    /// <summary>Target session identifier.</summary>
+    [JsonPropertyName("sessionId")]
+    public string SessionId { get; set; } = string.Empty;
+}
+
 /// <summary>Indicates whether the session options patch was applied successfully.</summary>
 [Experimental(Diagnostics.Experimental)]
 public sealed class SessionUpdateOptionsResult
@@ -6539,6 +6613,10 @@ public sealed class SlashCommandInfo
     /// <summary>Canonical command name without a leading slash.</summary>
     [JsonPropertyName("name")]
     public string Name { get; set; } = string.Empty;
+
+    /// <summary>Whether the command may be the target of `/every` / `/after` schedules. Resolution happens at every tick, so only set this when the command is safe to re-invoke and produces an agent prompt.</summary>
+    [JsonPropertyName("schedulable")]
+    public bool? Schedulable { get; set; }
 }
 
 /// <summary>Slash commands available in the session, after applying any include/exclude filters.</summary>
@@ -12995,6 +13073,135 @@ public readonly struct McpAppsHostContextDetailsTheme : IEquatable<McpAppsHostCo
 }
 
 
+/// <summary>Provider family. Matches the `type` field of a BYOK provider config.</summary>
+[Experimental(Diagnostics.Experimental)]
+[JsonConverter(typeof(Converter))]
+[DebuggerDisplay("{Value,nq}")]
+public readonly struct ProviderEndpointType : IEquatable<ProviderEndpointType>
+{
+    private readonly string? _value;
+
+    /// <summary>Initializes a new instance of the <see cref="ProviderEndpointType"/> struct.</summary>
+    /// <param name="value">The value to associate with this <see cref="ProviderEndpointType"/>.</param>
+    [JsonConstructor]
+    public ProviderEndpointType(string value)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(value);
+        _value = value;
+    }
+
+    /// <summary>Gets the value associated with this <see cref="ProviderEndpointType"/>.</summary>
+    public string Value => _value ?? string.Empty;
+
+    /// <summary>OpenAI-compatible endpoint (use the OpenAI client library).</summary>
+    public static ProviderEndpointType Openai { get; } = new("openai");
+
+    /// <summary>Azure OpenAI endpoint (use the OpenAI client library with the Azure base URL).</summary>
+    public static ProviderEndpointType Azure { get; } = new("azure");
+
+    /// <summary>Anthropic endpoint (use the Anthropic client library).</summary>
+    public static ProviderEndpointType Anthropic { get; } = new("anthropic");
+
+    /// <summary>Returns a value indicating whether two <see cref="ProviderEndpointType"/> instances are equivalent.</summary>
+    public static bool operator ==(ProviderEndpointType left, ProviderEndpointType right) => left.Equals(right);
+
+    /// <summary>Returns a value indicating whether two <see cref="ProviderEndpointType"/> instances are not equivalent.</summary>
+    public static bool operator !=(ProviderEndpointType left, ProviderEndpointType right) => !(left == right);
+
+    /// <inheritdoc />
+    public override bool Equals(object? obj) => obj is ProviderEndpointType other && Equals(other);
+
+    /// <inheritdoc />
+    public bool Equals(ProviderEndpointType other) => string.Equals(Value, other.Value, StringComparison.OrdinalIgnoreCase);
+
+    /// <inheritdoc />
+    public override int GetHashCode() => StringComparer.OrdinalIgnoreCase.GetHashCode(Value);
+
+    /// <inheritdoc />
+    public override string ToString() => Value;
+
+    /// <summary>Provides a <see cref="JsonConverter{ProviderEndpointType}"/> for serializing <see cref="ProviderEndpointType"/> instances.</summary>
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    public sealed class Converter : JsonConverter<ProviderEndpointType>
+    {
+        /// <inheritdoc />
+        public override ProviderEndpointType Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            return new(GeneratedStringEnumJson.ReadValue(ref reader, typeToConvert));
+        }
+
+        /// <inheritdoc />
+        public override void Write(Utf8JsonWriter writer, ProviderEndpointType value, JsonSerializerOptions options)
+        {
+            GeneratedStringEnumJson.WriteValue(writer, value.Value, typeof(ProviderEndpointType));
+        }
+    }
+}
+
+
+/// <summary>Wire API to be used, when required for the provider type.</summary>
+[Experimental(Diagnostics.Experimental)]
+[JsonConverter(typeof(Converter))]
+[DebuggerDisplay("{Value,nq}")]
+public readonly struct ProviderEndpointWireApi : IEquatable<ProviderEndpointWireApi>
+{
+    private readonly string? _value;
+
+    /// <summary>Initializes a new instance of the <see cref="ProviderEndpointWireApi"/> struct.</summary>
+    /// <param name="value">The value to associate with this <see cref="ProviderEndpointWireApi"/>.</param>
+    [JsonConstructor]
+    public ProviderEndpointWireApi(string value)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(value);
+        _value = value;
+    }
+
+    /// <summary>Gets the value associated with this <see cref="ProviderEndpointWireApi"/>.</summary>
+    public string Value => _value ?? string.Empty;
+
+    /// <summary>Classic chat-completions request shape.</summary>
+    public static ProviderEndpointWireApi Completions { get; } = new("completions");
+
+    /// <summary>Newer responses request shape.</summary>
+    public static ProviderEndpointWireApi Responses { get; } = new("responses");
+
+    /// <summary>Returns a value indicating whether two <see cref="ProviderEndpointWireApi"/> instances are equivalent.</summary>
+    public static bool operator ==(ProviderEndpointWireApi left, ProviderEndpointWireApi right) => left.Equals(right);
+
+    /// <summary>Returns a value indicating whether two <see cref="ProviderEndpointWireApi"/> instances are not equivalent.</summary>
+    public static bool operator !=(ProviderEndpointWireApi left, ProviderEndpointWireApi right) => !(left == right);
+
+    /// <inheritdoc />
+    public override bool Equals(object? obj) => obj is ProviderEndpointWireApi other && Equals(other);
+
+    /// <inheritdoc />
+    public bool Equals(ProviderEndpointWireApi other) => string.Equals(Value, other.Value, StringComparison.OrdinalIgnoreCase);
+
+    /// <inheritdoc />
+    public override int GetHashCode() => StringComparer.OrdinalIgnoreCase.GetHashCode(Value);
+
+    /// <inheritdoc />
+    public override string ToString() => Value;
+
+    /// <summary>Provides a <see cref="JsonConverter{ProviderEndpointWireApi}"/> for serializing <see cref="ProviderEndpointWireApi"/> instances.</summary>
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    public sealed class Converter : JsonConverter<ProviderEndpointWireApi>
+    {
+        /// <inheritdoc />
+        public override ProviderEndpointWireApi Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            return new(GeneratedStringEnumJson.ReadValue(ref reader, typeToConvert));
+        }
+
+        /// <inheritdoc />
+        public override void Write(Utf8JsonWriter writer, ProviderEndpointWireApi value, JsonSerializerOptions options)
+        {
+            GeneratedStringEnumJson.WriteValue(writer, value.Value, typeof(ProviderEndpointWireApi));
+        }
+    }
+}
+
+
 /// <summary>Allowed values for the `OptionsUpdateAdditionalContentExclusionPolicyScope` enumeration.</summary>
 [Experimental(Diagnostics.Experimental)]
 [JsonConverter(typeof(Converter))]
@@ -16279,6 +16486,12 @@ public sealed class SessionRpc
         Interlocked.CompareExchange(ref field, new(_session), null) ??
         field;
 
+    /// <summary>Provider APIs.</summary>
+    public ProviderApi Provider =>
+        field ??
+        Interlocked.CompareExchange(ref field, new(_session), null) ??
+        field;
+
     /// <summary>Options APIs.</summary>
     public OptionsApi Options =>
         field ??
@@ -17665,6 +17878,30 @@ public sealed class PluginsApi
 
         var rpcRequest = new PluginsReloadRequestWithSession { SessionId = _session.SessionId, ReloadMcp = request?.ReloadMcp, ReloadCustomAgents = request?.ReloadCustomAgents, ReloadHooks = request?.ReloadHooks, DeferRepoHooks = request?.DeferRepoHooks };
         await CopilotClient.InvokeRpcAsync(_session.Rpc, "session.plugins.reload", [rpcRequest], cancellationToken);
+    }
+}
+
+/// <summary>Provides session-scoped Provider APIs.</summary>
+[Experimental(Diagnostics.Experimental)]
+public sealed class ProviderApi
+{
+    private readonly CopilotSession _session;
+
+    internal ProviderApi(CopilotSession session)
+    {
+        _session = session;
+    }
+
+    /// <summary>Returns the provider endpoint and credentials the session is currently configured to talk to, so the caller can make inference calls directly against the same backend the session uses.</summary>
+    /// <param name="request">Optional model identifier to scope the endpoint snapshot to.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>A snapshot of the provider endpoint the session is currently configured to talk to.</returns>
+    public async Task<ProviderEndpoint> GetEndpointAsync(ProviderGetEndpointRequest? request = null, CancellationToken cancellationToken = default)
+    {
+        _session.ThrowIfDisposed();
+
+        var rpcRequest = new ProviderGetEndpointRequestWithSession { SessionId = _session.SessionId, ModelId = request?.ModelId };
+        return await CopilotClient.InvokeRpcAsync<ProviderEndpoint>(_session.Rpc, "session.provider.getEndpoint", [rpcRequest], cancellationToken);
     }
 }
 
@@ -19176,6 +19413,7 @@ internal static class ClientSessionApiRegistration
 [JsonSerializable(typeof(GitHub.Copilot.AssistantMessageDeltaData), TypeInfoPropertyName = "SessionEventsAssistantMessageDeltaData")]
 [JsonSerializable(typeof(GitHub.Copilot.AssistantMessageDeltaEvent), TypeInfoPropertyName = "SessionEventsAssistantMessageDeltaEvent")]
 [JsonSerializable(typeof(GitHub.Copilot.AssistantMessageEvent), TypeInfoPropertyName = "SessionEventsAssistantMessageEvent")]
+[JsonSerializable(typeof(GitHub.Copilot.AssistantMessageServerTools), TypeInfoPropertyName = "SessionEventsAssistantMessageServerTools")]
 [JsonSerializable(typeof(GitHub.Copilot.AssistantMessageStartData), TypeInfoPropertyName = "SessionEventsAssistantMessageStartData")]
 [JsonSerializable(typeof(GitHub.Copilot.AssistantMessageStartEvent), TypeInfoPropertyName = "SessionEventsAssistantMessageStartEvent")]
 [JsonSerializable(typeof(GitHub.Copilot.AssistantMessageToolRequest), TypeInfoPropertyName = "SessionEventsAssistantMessageToolRequest")]
@@ -19691,6 +19929,10 @@ internal static class ClientSessionApiRegistration
 [JsonSerializable(typeof(PollSpawnedSessionsResult))]
 [JsonSerializable(typeof(ProviderConfig))]
 [JsonSerializable(typeof(ProviderConfigAzure))]
+[JsonSerializable(typeof(ProviderEndpoint))]
+[JsonSerializable(typeof(ProviderGetEndpointRequest))]
+[JsonSerializable(typeof(ProviderGetEndpointRequestWithSession))]
+[JsonSerializable(typeof(ProviderSessionToken))]
 [JsonSerializable(typeof(PushAttachment))]
 [JsonSerializable(typeof(PushAttachmentFileLineRange))]
 [JsonSerializable(typeof(PushAttachmentSelectionDetails))]

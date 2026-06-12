@@ -2181,18 +2181,6 @@ public sealed partial class AssistantStreamingDeltaData
 /// <summary>Assistant response containing text content, optional tool requests, and interaction metadata.</summary>
 public sealed partial class AssistantMessageData
 {
-    /// <summary>Raw Anthropic content array with advisor blocks (server_tool_use, advisor_tool_result) for verbatim round-tripping.</summary>
-    [Experimental(Diagnostics.Experimental)]
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    [JsonPropertyName("anthropicAdvisorBlocks")]
-    public JsonElement[]? AnthropicAdvisorBlocks { get; set; }
-
-    /// <summary>Anthropic advisor model ID used for this response, for timeline display on replay.</summary>
-    [Experimental(Diagnostics.Experimental)]
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    [JsonPropertyName("anthropicAdvisorModel")]
-    public string? AnthropicAdvisorModel { get; set; }
-
     /// <summary>Provider's completion / response identifier; shared across all chunks of a single API call. Used to group multi-chunk assistant utterances.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     [JsonPropertyName("apiCallId")]
@@ -2252,6 +2240,11 @@ public sealed partial class AssistantMessageData
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     [JsonPropertyName("requestId")]
     public string? RequestId { get; set; }
+
+    /// <summary>Neutral provider-tagged server-side tool-use payload (tool search, advisor) for verbatim round-tripping.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonPropertyName("serverTools")]
+    public AssistantMessageServerTools? ServerTools { get; set; }
 
     /// <summary>Copilot service request ID (x-copilot-service-request-id header) for CAPI log correlation.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -2661,7 +2654,7 @@ public sealed partial class SkillInvokedData
     [JsonPropertyName("pluginVersion")]
     public string? PluginVersion { get; set; }
 
-    /// <summary>Source identifier for where the skill was discovered. Known values include: project (workspace skill), inherited (parent-directory skill), personal-copilot (~/.copilot/skills), personal-agents (~/.agents/skills), personal-claude (~/.claude/skills), custom (configured directory), plugin (installed plugin), builtin (bundled runtime skill), and remote (org/enterprise skill).</summary>
+    /// <summary>Source identifier for where the skill was discovered. Known values include: project (workspace skill), inherited (parent-directory skill), personal-copilot (~/.copilot/skills), personal-agents (~/.agents/skills), custom (configured directory), plugin (installed plugin), builtin (bundled runtime skill), and remote (org/enterprise skill).</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     [JsonPropertyName("source")]
     public string? Source { get; set; }
@@ -3952,6 +3945,36 @@ public partial class Attachment
     public virtual string Type { get; set; } = string.Empty;
 }
 
+
+/// <summary>Neutral provider-tagged server-side tool-use payload (tool search, advisor) for verbatim round-tripping.</summary>
+/// <remarks>Nested data type for <c>AssistantMessageServerTools</c>.</remarks>
+[Experimental(Diagnostics.Experimental)]
+public sealed partial class AssistantMessageServerTools
+{
+    /// <summary>Gets or sets the <c>advisorModel</c> value.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonPropertyName("advisorModel")]
+    public string? AdvisorModel { get; set; }
+
+    /// <summary>Gets or sets the <c>functionCallNamespaces</c> value.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonPropertyName("functionCallNamespaces")]
+    public IDictionary<string, string>? FunctionCallNamespaces { get; set; }
+
+    /// <summary>Gets or sets the <c>items</c> value.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonPropertyName("items")]
+    public JsonElement[]? Items { get; set; }
+
+    /// <summary>Gets or sets the <c>provider</c> value.</summary>
+    [JsonPropertyName("provider")]
+    public required string Provider { get; set; }
+
+    /// <summary>Gets or sets the <c>rawContentBlocks</c> value.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonPropertyName("rawContentBlocks")]
+    public JsonElement[]? RawContentBlocks { get; set; }
+}
 
 /// <summary>A tool invocation request from the assistant.</summary>
 /// <remarks>Nested data type for <c>AssistantMessageToolRequest</c>.</remarks>
@@ -8283,6 +8306,7 @@ public readonly struct CanvasOpenedAvailability : IEquatable<CanvasOpenedAvailab
 [JsonSerializable(typeof(AssistantMessageDeltaData))]
 [JsonSerializable(typeof(AssistantMessageDeltaEvent))]
 [JsonSerializable(typeof(AssistantMessageEvent))]
+[JsonSerializable(typeof(AssistantMessageServerTools))]
 [JsonSerializable(typeof(AssistantMessageStartData))]
 [JsonSerializable(typeof(AssistantMessageStartEvent))]
 [JsonSerializable(typeof(AssistantMessageToolRequest))]
