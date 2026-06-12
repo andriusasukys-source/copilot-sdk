@@ -138,7 +138,7 @@ describe("CopilotClient", () => {
         expect(resumePayload.reasoningSummary).toBe("none");
     });
 
-    it("forwards isExperimentalMode in session.create and session.resume", async () => {
+    it("forwards enableExperimentalMode in session.create and session.resume", async () => {
         const client = new CopilotClient();
         await client.start();
         onTestFinished(() => client.forceStop());
@@ -153,11 +153,11 @@ describe("CopilotClient", () => {
 
         const session = await client.createSession({
             onPermissionRequest: approveAll,
-            isExperimentalMode: false,
+            enableExperimentalMode: false,
         });
         await client.resumeSession(session.sessionId, {
             onPermissionRequest: approveAll,
-            isExperimentalMode: true,
+            enableExperimentalMode: true,
         });
 
         const createPayload = spy.mock.calls.find(

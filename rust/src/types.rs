@@ -1259,7 +1259,7 @@ pub struct SessionConfig {
     /// affects the feature-flag resolution for this one session. Serializes
     /// as `isExperimentalMode` and is omitted from the wire when `None`, so
     /// older CLIs that don't understand it are unaffected.
-    pub is_experimental_mode: Option<bool>,
+    pub enable_experimental_mode: Option<bool>,
     /// Skill directory paths passed through to the GitHub Copilot CLI.
     pub skill_directories: Option<Vec<PathBuf>>,
     /// Additional directories to search for custom instruction files.
@@ -1432,7 +1432,7 @@ impl std::fmt::Debug for SessionConfig {
             .field("enable_session_store", &self.enable_session_store)
             .field("enable_skills", &self.enable_skills)
             .field("enable_mcp_apps", &self.enable_mcp_apps)
-            .field("is_experimental_mode", &self.is_experimental_mode)
+            .field("enable_experimental_mode", &self.enable_experimental_mode)
             .field("skill_directories", &self.skill_directories)
             .field("instruction_directories", &self.instruction_directories)
             .field("plugin_directories", &self.plugin_directories)
@@ -1532,7 +1532,7 @@ impl Default for SessionConfig {
             enable_skills: None,
             embedding_cache_storage: None,
             enable_mcp_apps: None,
-            is_experimental_mode: None,
+            enable_experimental_mode: None,
             skill_directories: None,
             instruction_directories: None,
             plugin_directories: None,
@@ -1675,7 +1675,7 @@ impl SessionConfig {
             request_auto_mode_switch,
             request_elicitation,
             request_mcp_apps: self.enable_mcp_apps.unwrap_or(false),
-            is_experimental_mode: self.is_experimental_mode,
+            is_experimental_mode: self.enable_experimental_mode,
             hooks: hooks_flag,
             skill_directories: self.skill_directories,
             instruction_directories: self.instruction_directories,
@@ -2020,11 +2020,9 @@ impl SessionConfig {
         self
     }
 
-    /// Disable (`false`) or force-enable (`true`) the experimental feature-flag
-    /// tier for this session only. `None` (default) inherits the CLI process's
-    /// flags. Never persists to config. See the field docs for resume caveats.
-    pub fn with_is_experimental_mode(mut self, is_experimental_mode: bool) -> Self {
-        self.is_experimental_mode = Some(is_experimental_mode);
+    /// Set [`enable_experimental_mode`](Self::enable_experimental_mode).
+    pub fn with_enable_experimental_mode(mut self, enable_experimental_mode: bool) -> Self {
+        self.enable_experimental_mode = Some(enable_experimental_mode);
         self
     }
 
@@ -2290,7 +2288,7 @@ pub struct ResumeSessionConfig {
     /// cold-load path (the session is not already live in-process); an
     /// already-active session keeps the flags it was created with. Serializes
     /// as `isExperimentalMode` and is omitted from the wire when `None`.
-    pub is_experimental_mode: Option<bool>,
+    pub enable_experimental_mode: Option<bool>,
     /// Skill directory paths passed through to the GitHub Copilot CLI on resume.
     pub skill_directories: Option<Vec<PathBuf>>,
     /// Additional directories to search for custom instruction files on
@@ -2434,7 +2432,7 @@ impl std::fmt::Debug for ResumeSessionConfig {
             .field("enable_session_store", &self.enable_session_store)
             .field("enable_skills", &self.enable_skills)
             .field("enable_mcp_apps", &self.enable_mcp_apps)
-            .field("is_experimental_mode", &self.is_experimental_mode)
+            .field("enable_experimental_mode", &self.enable_experimental_mode)
             .field("skill_directories", &self.skill_directories)
             .field("instruction_directories", &self.instruction_directories)
             .field("plugin_directories", &self.plugin_directories)
@@ -2578,7 +2576,7 @@ impl ResumeSessionConfig {
             request_auto_mode_switch,
             request_elicitation,
             request_mcp_apps: self.enable_mcp_apps.unwrap_or(false),
-            is_experimental_mode: self.is_experimental_mode,
+            is_experimental_mode: self.enable_experimental_mode,
             hooks: hooks_flag,
             skill_directories: self.skill_directories,
             instruction_directories: self.instruction_directories,
@@ -2655,7 +2653,7 @@ impl ResumeSessionConfig {
             enable_skills: None,
             embedding_cache_storage: None,
             enable_mcp_apps: None,
-            is_experimental_mode: None,
+            enable_experimental_mode: None,
             skill_directories: None,
             instruction_directories: None,
             plugin_directories: None,
@@ -2975,11 +2973,9 @@ impl ResumeSessionConfig {
         self
     }
 
-    /// Disable (`false`) or force-enable (`true`) the experimental feature-flag
-    /// tier for this session only. `None` (default) inherits the CLI process's
-    /// flags. Never persists to config. See the field docs for resume caveats.
-    pub fn with_is_experimental_mode(mut self, is_experimental_mode: bool) -> Self {
-        self.is_experimental_mode = Some(is_experimental_mode);
+    /// Set [`enable_experimental_mode`](Self::enable_experimental_mode).
+    pub fn with_enable_experimental_mode(mut self, enable_experimental_mode: bool) -> Self {
+        self.enable_experimental_mode = Some(enable_experimental_mode);
         self
     }
 
@@ -4504,13 +4500,13 @@ mod tests {
     }
 
     #[test]
-    fn session_config_is_experimental_mode_serializes_when_set() {
-        let cfg = SessionConfig::default().with_is_experimental_mode(false);
-        assert_eq!(cfg.is_experimental_mode, Some(false));
+    fn session_config_enable_experimental_mode_serializes_when_set() {
+        let cfg = SessionConfig::default().with_enable_experimental_mode(false);
+        assert_eq!(cfg.enable_experimental_mode, Some(false));
 
         let (wire, _runtime) = cfg
             .into_wire(Some(SessionId::from("experimental-mode")))
-            .expect("is_experimental_mode config has no duplicate handlers");
+            .expect("enable_experimental_mode config has no duplicate handlers");
         assert_eq!(wire.is_experimental_mode, Some(false));
 
         let json = serde_json::to_value(&wire).unwrap();
@@ -4518,9 +4514,9 @@ mod tests {
     }
 
     #[test]
-    fn session_config_is_experimental_mode_omitted_when_none() {
+    fn session_config_enable_experimental_mode_omitted_when_none() {
         let cfg = SessionConfig::default();
-        assert_eq!(cfg.is_experimental_mode, None);
+        assert_eq!(cfg.enable_experimental_mode, None);
 
         let (wire, _runtime) = cfg
             .into_wire(Some(SessionId::from("no-experimental-mode")))
@@ -4532,14 +4528,14 @@ mod tests {
     }
 
     #[test]
-    fn resume_session_config_is_experimental_mode_serializes_when_set() {
+    fn resume_session_config_enable_experimental_mode_serializes_when_set() {
         let cfg = ResumeSessionConfig::new(SessionId::from("resume-experimental-mode"))
-            .with_is_experimental_mode(false);
-        assert_eq!(cfg.is_experimental_mode, Some(false));
+            .with_enable_experimental_mode(false);
+        assert_eq!(cfg.enable_experimental_mode, Some(false));
 
         let (wire, _runtime) = cfg
             .into_wire()
-            .expect("resume is_experimental_mode config has no duplicate handlers");
+            .expect("resume enable_experimental_mode config has no duplicate handlers");
         assert_eq!(wire.is_experimental_mode, Some(false));
 
         let json = serde_json::to_value(&wire).unwrap();
@@ -4547,9 +4543,9 @@ mod tests {
     }
 
     #[test]
-    fn resume_session_config_is_experimental_mode_omitted_when_none() {
+    fn resume_session_config_enable_experimental_mode_omitted_when_none() {
         let cfg = ResumeSessionConfig::new(SessionId::from("resume-no-experimental-mode"));
-        assert_eq!(cfg.is_experimental_mode, None);
+        assert_eq!(cfg.enable_experimental_mode, None);
 
         let (wire, _runtime) = cfg
             .into_wire()

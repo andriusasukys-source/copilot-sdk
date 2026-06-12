@@ -300,7 +300,7 @@ public class SerializationTests
     }
 
     [Fact]
-    public void SessionRequests_CanSerializeIsExperimentalMode_WithSdkOptions()
+    public void SessionRequests_CanSerializeEnableExperimentalMode_WithSdkOptions()
     {
         var options = GetSerializerOptions();
 

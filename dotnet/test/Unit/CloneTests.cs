@@ -76,7 +76,7 @@ public class CloneTests
             WorkingDirectory = "/workspace",
             Streaming = true,
             EnableSessionTelemetry = false,
-            IsExperimentalMode = true,
+            EnableExperimentalMode = true,
             EnableOnDemandInstructionDiscovery = true,
             IncludeSubAgentStreamingEvents = false,
             McpServers = new Dictionary<string, McpServerConfig> { ["server1"] = new McpStdioServerConfig { Command = "echo" } },
@@ -116,7 +116,7 @@ public class CloneTests
         Assert.Equal(original.WorkingDirectory, clone.WorkingDirectory);
         Assert.Equal(original.Streaming, clone.Streaming);
         Assert.Equal(original.EnableSessionTelemetry, clone.EnableSessionTelemetry);
-        Assert.Equal(original.IsExperimentalMode, clone.IsExperimentalMode);
+        Assert.Equal(original.EnableExperimentalMode, clone.EnableExperimentalMode);
         Assert.Equal(original.EnableOnDemandInstructionDiscovery, clone.EnableOnDemandInstructionDiscovery);
         Assert.Equal(original.IncludeSubAgentStreamingEvents, clone.IncludeSubAgentStreamingEvents);
         Assert.Equal(original.McpServers.Count, clone.McpServers!.Count);
@@ -358,16 +358,16 @@ public class CloneTests
     }
 
     [Fact]
-    public void ResumeSessionConfig_Clone_CopiesIsExperimentalMode()
+    public void ResumeSessionConfig_Clone_CopiesEnableExperimentalMode()
     {
         var original = new ResumeSessionConfig
         {
-            IsExperimentalMode = true,
+            EnableExperimentalMode = true,
         };
 
         var clone = original.Clone();
 
-        Assert.True(clone.IsExperimentalMode);
+        Assert.True(clone.EnableExperimentalMode);
     }
 
     [Fact]
@@ -456,23 +456,23 @@ public class CloneTests
     }
 
     [Fact]
-    public void SessionConfig_Clone_PreservesIsExperimentalModeDefault()
+    public void SessionConfig_Clone_PreservesEnableExperimentalModeDefault()
     {
         var original = new SessionConfig();
 
         var clone = original.Clone();
 
-        Assert.Null(clone.IsExperimentalMode);
+        Assert.Null(clone.EnableExperimentalMode);
     }
 
     [Fact]
-    public void ResumeSessionConfig_Clone_PreservesIsExperimentalModeDefault()
+    public void ResumeSessionConfig_Clone_PreservesEnableExperimentalModeDefault()
     {
         var original = new ResumeSessionConfig();
 
         var clone = original.Clone();
 
-        Assert.Null(clone.IsExperimentalMode);
+        Assert.Null(clone.EnableExperimentalMode);
     }
 
     [Fact]

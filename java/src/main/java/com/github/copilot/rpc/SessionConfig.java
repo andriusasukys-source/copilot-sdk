@@ -50,7 +50,7 @@ public class SessionConfig {
     private List<String> excludedTools;
     private ProviderConfig provider;
     private Boolean enableSessionTelemetry;
-    private Boolean isExperimentalMode;
+    private Boolean enableExperimentalMode;
     private Boolean skipCustomInstructions;
     private Boolean customAgentsLocalOnly;
     private Boolean coauthorEnabled;
@@ -407,32 +407,32 @@ public class SessionConfig {
      *         inherit the runtime process defaults unchanged
      */
     @JsonIgnore
-    public Optional<Boolean> getIsExperimentalMode() {
-        return Optional.ofNullable(isExperimentalMode);
+    public Optional<Boolean> getEnableExperimentalMode() {
+        return Optional.ofNullable(enableExperimentalMode);
     }
 
     /**
      * Overrides the session's experimental feature-flag tier resolution.
      *
-     * @param isExperimentalMode
+     * @param enableExperimentalMode
      *            {@code true} to force-enable the experimental tier for this
      *            session, {@code false} to resolve feature flags as if experimental
      *            were off
      * @return this config instance for method chaining
      */
-    public SessionConfig setIsExperimentalMode(boolean isExperimentalMode) {
-        this.isExperimentalMode = isExperimentalMode;
+    public SessionConfig setEnableExperimentalMode(boolean enableExperimentalMode) {
+        this.enableExperimentalMode = enableExperimentalMode;
         return this;
     }
 
     /**
-     * Clears the isExperimentalMode setting, reverting to the runtime default
+     * Clears the enableExperimentalMode setting, reverting to the runtime default
      * behavior.
      *
      * @return this instance for method chaining
      */
-    public SessionConfig clearIsExperimentalMode() {
-        this.isExperimentalMode = null;
+    public SessionConfig clearEnableExperimentalMode() {
+        this.enableExperimentalMode = null;
         return this;
     }
 
@@ -1688,7 +1688,7 @@ public class SessionConfig {
         copy.excludedTools = this.excludedTools != null ? new ArrayList<>(this.excludedTools) : null;
         copy.provider = this.provider;
         copy.enableSessionTelemetry = this.enableSessionTelemetry;
-        copy.isExperimentalMode = this.isExperimentalMode;
+        copy.enableExperimentalMode = this.enableExperimentalMode;
         copy.skipCustomInstructions = this.skipCustomInstructions;
         copy.customAgentsLocalOnly = this.customAgentsLocalOnly;
         copy.coauthorEnabled = this.coauthorEnabled;

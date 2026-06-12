@@ -1593,7 +1593,7 @@ export interface SessionConfigBase {
      * `false` to resolve feature flags as if experimental were off. Leave
      * unset to inherit the runtime process defaults unchanged.
      */
-    isExperimentalMode?: boolean;
+    enableExperimentalMode?: boolean;
 
     /**
      * Context window tier for models that support it. Use "long_context" to pin

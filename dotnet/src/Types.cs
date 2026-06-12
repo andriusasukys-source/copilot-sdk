@@ -2474,7 +2474,7 @@ public abstract class SessionConfigBase
         OnUserInputRequest = other.OnUserInputRequest;
         Provider = other.Provider;
         EnableSessionTelemetry = other.EnableSessionTelemetry;
-        IsExperimentalMode = other.IsExperimentalMode;
+        EnableExperimentalMode = other.EnableExperimentalMode;
         SkipCustomInstructions = other.SkipCustomInstructions;
         CustomAgentsLocalOnly = other.CustomAgentsLocalOnly;
         CoauthorEnabled = other.CoauthorEnabled;
@@ -2649,7 +2649,7 @@ public abstract class SessionConfigBase
     /// experimental were off. Leave <see langword="null"/> to inherit the runtime
     /// process defaults unchanged.
     /// </remarks>
-    public bool? IsExperimentalMode { get; set; }
+    public bool? EnableExperimentalMode { get; set; }
 
     /// <summary>
     /// When <see langword="true"/>, suppresses loading of custom instruction files

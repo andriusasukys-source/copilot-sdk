@@ -980,12 +980,12 @@ type SessionConfig struct {
 	// regardless of this setting. This is independent of the OpenTelemetry
 	// configuration in ClientOptions.Telemetry.
 	EnableSessionTelemetry *bool
-	// IsExperimentalMode, when non-nil, overrides the session's experimental
+	// EnableExperimentalMode, when non-nil, overrides the session's experimental
 	// feature-flag tier resolution. Use Bool(true) to force-enable the
 	// experimental tier for this session, Bool(false) to resolve feature flags
 	// as if experimental were off, or nil to inherit the runtime process
 	// defaults unchanged.
-	IsExperimentalMode *bool
+	EnableExperimentalMode *bool
 	// SkipCustomInstructions, when non-nil, controls whether the runtime loads
 	// custom instruction files. See also [ClientOptions.Mode] = [ModeEmpty].
 	SkipCustomInstructions *bool
@@ -1301,12 +1301,12 @@ type ResumeSessionConfig struct {
 	// regardless of this setting. This is independent of the OpenTelemetry
 	// configuration in ClientOptions.Telemetry.
 	EnableSessionTelemetry *bool
-	// IsExperimentalMode, when non-nil, overrides the resumed session's
+	// EnableExperimentalMode, when non-nil, overrides the resumed session's
 	// experimental feature-flag tier resolution. Use Bool(true) to force-enable
 	// the experimental tier for this session, Bool(false) to resolve feature
 	// flags as if experimental were off, or nil to inherit the runtime process
 	// defaults unchanged.
-	IsExperimentalMode *bool
+	EnableExperimentalMode *bool
 	// SkipCustomInstructions, when non-nil, controls whether the runtime loads
 	// custom instruction files. See also [ClientOptions.Mode] = [ModeEmpty].
 	SkipCustomInstructions *bool

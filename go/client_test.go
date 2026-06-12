@@ -1242,8 +1242,8 @@ func TestCreateSessionRequest_RequestMCPApps(t *testing.T) {
 	})
 }
 
-func TestSessionRequests_IsExperimentalMode(t *testing.T) {
-	t.Run("create forwards isExperimentalMode when explicitly false", func(t *testing.T) {
+func TestSessionRequests_EnableExperimentalMode(t *testing.T) {
+	t.Run("create forwards enableExperimentalMode when explicitly false", func(t *testing.T) {
 		req := createSessionRequest{
 			IsExperimentalMode: Bool(false),
 		}
@@ -1260,7 +1260,7 @@ func TestSessionRequests_IsExperimentalMode(t *testing.T) {
 		}
 	})
 
-	t.Run("create omits isExperimentalMode when unset", func(t *testing.T) {
+	t.Run("create omits enableExperimentalMode when unset", func(t *testing.T) {
 		req := createSessionRequest{}
 		data, _ := json.Marshal(req)
 		var m map[string]any
@@ -1270,7 +1270,7 @@ func TestSessionRequests_IsExperimentalMode(t *testing.T) {
 		}
 	})
 
-	t.Run("resume forwards isExperimentalMode when explicitly true", func(t *testing.T) {
+	t.Run("resume forwards enableExperimentalMode when explicitly true", func(t *testing.T) {
 		req := resumeSessionRequest{
 			SessionID:          "s1",
 			IsExperimentalMode: Bool(true),
@@ -1288,7 +1288,7 @@ func TestSessionRequests_IsExperimentalMode(t *testing.T) {
 		}
 	})
 
-	t.Run("resume omits isExperimentalMode when unset", func(t *testing.T) {
+	t.Run("resume omits enableExperimentalMode when unset", func(t *testing.T) {
 		req := resumeSessionRequest{SessionID: "s1"}
 		data, _ := json.Marshal(req)
 		var m map[string]any
